@@ -6,7 +6,7 @@ A Claude Code mod for the desktop app: a side panel with your session at the top
 
 - Session header:
   - Project folder, its parent path and the current git branch.
-  - Context used by the main thread, with a thin bar.
+  - Context used by the main thread, with a thin bar. It turns from green (below 40%) to amber (below 50%), orange (below 60%) and red.
   - Totals for all subagents: tokens, estimated cost and time.
 - One row per subagent, grouped under "Running" and "Finished":
   - A pixel crab with its own body color, indented under the agent that spawned it.

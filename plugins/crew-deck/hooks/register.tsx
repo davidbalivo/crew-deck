@@ -482,7 +482,8 @@ const familiesOf = (list: AgentRun[]): Family[] => {
 // Palette from the redesign research (Few, Carbon, Okabe-Ito, WCAG):
 // grey text in three steps, one hue per state, every color with a dark variant.
 // Text passes 4.5:1 and marks 3:1 on #FFFFFF / #1F1F1E. `.cR` running, `.cF`
-// failed, `.cW` the header's context percentage, `.bf` an agent's body (`--b`).
+// failed, `.cG` `.cW` `.cO` `.cF` the header's context by level (green, amber,
+// orange, red), `.bf` an agent's body (`--b`).
 // Metrics: `.mvC` cost in a muted teal, the only colored figure on a row; time,
 // context and tokens in the grey `.ml`; the words `ctx`, `in`, `out` and the
 // agent type lighter still, `.mk`
@@ -501,10 +502,10 @@ const bodyCss = (i: 0 | 1): string => BODY_COLORS.map((c, n) => `.b${n}{--b:${c[
 const PANE_CSS = `<style>
 .t{fill:#1F1F1E}.s{fill:#55544F}.m{fill:#73726D}.k{fill:#E6E5E1}.ln{stroke:#ECEBE7}.tile{fill:#F4F3F0}.tr{stroke:#D3D2CD;stroke-width:1.2;fill:none;stroke-linecap:round}
 .mvC{fill:#2B6A62}.ml{fill:#73726D}.mk{fill:#A3A29C}
-.cR{fill:#B5532F}.cF{fill:#C42B2B}.cW{fill:#9A5B00}.sF{stroke:#C42B2B}.sM{stroke:#73726D}.bf{fill:var(--b)}${bodyCss(0)}
+.cR{fill:#B5532F}.cF{fill:#C42B2B}.cW{fill:#9A5B00}.cG{fill:#2E7D52}.cO{fill:#B34E00}.sF{stroke:#C42B2B}.sM{stroke:#73726D}.bf{fill:var(--b)}${bodyCss(0)}
 @media (prefers-color-scheme: dark){.t{fill:#ECEBE8}.s{fill:#BDBCB6}.m{fill:#97968F}.k{fill:#3A3A37}.ln{stroke:#2E2E2C}.tile{fill:#262625}.tr{stroke:#4A4A47}
 .mvC{fill:#8FC8BF}.ml{fill:#97968F}.mk{fill:#6C6B66}
-.cR{fill:#E08A6B}.cF{fill:#F2726B}.cW{fill:#E8A33D}.sF{stroke:#F2726B}.sM{stroke:#97968F}${bodyCss(1)}}
+.cR{fill:#E08A6B}.cF{fill:#F2726B}.cW{fill:#E8A33D}.cG{fill:#5DBE8A}.cO{fill:#F08A4B}.sF{stroke:#F2726B}.sM{stroke:#97968F}${bodyCss(1)}}
 .live{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.35}}
 @media (prefers-reduced-motion: reduce){.live{animation:none}}
 </style>`
@@ -674,6 +675,10 @@ const fitMiddle = (s: string, size: number, maxW: number): string => {
 const BRANCH_ICON = (x: number, y: number): string =>
   `<g transform="translate(${x},${y})" class="sM" fill="none" stroke-width="1.2" stroke-linecap="round"><circle cx="2" cy="2" r="1.5"/><circle cx="2" cy="10" r="1.5"/><circle cx="8" cy="4" r="1.5"/><path d="M2 3.5v5M8 5.5c0 2.5-6 2-6 3"/></g>`
 
+// The header's context figure and bar change color as the main thread fills up:
+// green below 40%, amber below 50%, orange below 60%, red from there.
+const ctxLevel = (pct: number): string => (pct < 40 ? 'cG' : pct < 50 ? 'cW' : pct < 60 ? 'cO' : 'cF')
+
 const headerSvg = (W: number, title: string, t: ReturnType<typeof totals>, where: Env): string => {
   const s = tr()
   const top = title ? 28 : 0
@@ -706,6 +711,7 @@ const headerSvg = (W: number, title: string, t: ReturnType<typeof totals>, where
   const yLab = top + 55
   const yVal = top + 75
   const pct = where.ctxPct
+  const pctClass = ctxLevel(pct ?? 0)
   const fill = pct === undefined ? 0 : Math.round((48 * Math.min(100, pct)) / 100)
   return svg(
     W,
@@ -713,9 +719,9 @@ const headerSvg = (W: number, title: string, t: ReturnType<typeof totals>, where
     `${title ? `<text class="t" x="0" y="15" font-family="${FONT}" font-size="14" font-weight="600">${xml(fitText(title, 14, W))}</text>` : ''}
 ${text(0, yId, 13, 't', xml(folder), bold)}${path}${pill}
 ${text(0, yLab, 11, 'm', s.context)}${text(c1, yLab, 11, 'm', s.tokens, end)}${text(c2, yLab, 11, 'm', s.cost, end)}${text(c3, yLab, 11, 'm', s.time, end)}
-${pct === undefined ? text(0, yVal, 14, 'm', '—', bold) : text(0, yVal, 14, 'cW', `${pct}%`, bold)}
+${pct === undefined ? text(0, yVal, 14, 'm', '—', bold) : text(0, yVal, 14, pctClass, `${pct}%`, bold)}
 ${text(c1, yVal, 14, 'ml', xml(fmtTokens(t.tokens)), end)}${text(c2, yVal, 14, 'mvC', xml(fmtCost(t.cost)), end + bold)}${text(c3, yVal, 14, 'ml', xml(fmtTime(t.time)), end)}
-<rect class="k" x="0" y="${yVal + 5}" width="48" height="2" rx="1"/><rect class="cW" x="0" y="${yVal + 5}" width="${fill}" height="2" rx="1"/>
+<rect class="k" x="0" y="${yVal + 5}" width="48" height="2" rx="1"/><rect class="${pctClass}" x="0" y="${yVal + 5}" width="${fill}" height="2" rx="1"/>
 <line class="ln" x1="0" y1="${top + HEADER_H - 0.5}" x2="${W}" y2="${top + HEADER_H - 0.5}"/>`,
   )
 }
