@@ -35,10 +35,7 @@ type ProgressInput = {
 }
 
 // ---------------------------------------------------------------------------
-// Language: the `language` option, else Claude Code's `language` setting, else the
-// process locale; English when nothing says Russian.
-
-type Lang = 'en' | 'ru'
+// The panel's words, in English.
 
 const STRINGS = {
   en: {
@@ -63,8 +60,8 @@ const STRINGS = {
     isRunning: 'running',
     isFinished: 'finished',
     isPlanned: 'planned',
-    opened: 'Crew Deck opened.',
-    closed: 'Crew Deck closed.',
+    opened: 'opened',
+    closed: 'closed',
     done: 'Done',
     plan: 'Plan',
     design: 'Design',
@@ -73,57 +70,9 @@ const STRINGS = {
     busy: 'running',
     sub: 'sub',
   },
-  ru: {
-    pane: 'Crew Deck',
-    context: 'Контекст',
-    cost: 'Стоимость',
-    tokens: 'Токены',
-    time: 'Время',
-    collapse: 'Свернуть',
-    expand: 'Развернуть',
-    unfold: 'Подробнее',
-    fold: 'Скрыть',
-    running: 'Работают',
-    finished: 'Завершены',
-    planned: 'Запланированы',
-    empty: 'Субагентов пока нет',
-    round: 'раунд',
-    failed: 'ошибка',
-    after: 'после',
-    tokensWord: 'токенов',
-    agentsCount: 'агентов',
-    isRunning: 'работает',
-    isFinished: 'завершён',
-    isPlanned: 'запланирована',
-    opened: 'Crew Deck открыт.',
-    closed: 'Crew Deck закрыт.',
-    done: 'Готово',
-    plan: 'План',
-    design: 'Дизайн',
-    tasks: 'Задачи',
-    review: 'Ревью',
-    busy: 'в работе',
-    sub: 'суб',
-  },
 } as const
 
-// Module scope is fine here: session.start sets it again on every (re)load.
-let lang: Lang = 'en'
-const tr = () => STRINGS[lang]
-
-const isRussian = (v: unknown): boolean => typeof v === 'string' && /^(ru|russian|рус)/i.test(v.trim())
-
-async function detectLang($: EngineInterface, option: unknown): Promise<Lang> {
-  if (option === 'en' || option === 'ru') return option
-  try {
-    const settings = (await $.settings.read()) as Record<string, unknown>
-    if (typeof settings.language === 'string' && settings.language.trim()) return isRussian(settings.language) ? 'ru' : 'en'
-  } catch {
-    // No settings: fall through to the locale.
-  }
-  const locale = (await $.env.get('LC_ALL')) || (await $.env.get('LC_MESSAGES')) || (await $.env.get('LANG'))
-  return isRussian(locale) ? 'ru' : 'en'
-}
+const tr = () => STRINGS.en
 
 const blank = (): Flow => ({
   title: 'savvy-flow',
@@ -1038,10 +987,9 @@ async function refreshEnv($: EngineInterface): Promise<void> {
   await update($, env, prev => (prev.folder === folder && prev.path === path && prev.branch === branch ? prev : { ...prev, folder, path, branch }))
 }
 
-export const register: Register = (on, options) => {
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    lang = await detectLang($, options.language)
     await refreshEnv($).catch(() => undefined)
     const ctxPct = (await $.session.usage()).context.percent
     await update($, env, prev => ({ ...prev, ctxPct }))
@@ -1093,8 +1041,8 @@ export const register: Register = (on, options) => {
       },
     })
     await $.command.register({
-      name: 'agents-info',
-      description: 'Show or hide the panel of subagents: running, finished and planned, with model, context, cost and time',
+      name: 'crew-deck',
+      description: 'Show or hide Crew Deck: the session and its subagents, with model, context, cost and time',
     })
 
     // Ticks the running agents' clocks; quiet when nothing runs.
@@ -1113,7 +1061,7 @@ export const register: Register = (on, options) => {
     return started
   })
 
-  on('command.run', { command: 'agents-info' }, async $ => {
+  on('command.run', { command: 'crew-deck' }, async $ => {
     const isOpen = await togglePane($)
     return { text: isOpen ? tr().opened : tr().closed }
   })

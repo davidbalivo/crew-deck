@@ -24,7 +24,7 @@ In Claude Code:
 /plugin install crew-deck@crew-deck
 ```
 
-Then run `/reload-plugins`. The panel opens on its own; `/agents-info` opens and closes it.
+Then run `/reload-plugins`. The panel opens on its own; `/crew-deck` opens and closes it.
 
 ## Cost is an estimate
 
