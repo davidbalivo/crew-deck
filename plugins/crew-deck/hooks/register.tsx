@@ -42,7 +42,7 @@ type Lang = 'en' | 'ru'
 
 const STRINGS = {
   en: {
-    pane: 'Agents',
+    pane: 'Crew Deck',
     context: 'Context',
     cost: 'Cost',
     tokens: 'Tokens',
@@ -63,8 +63,8 @@ const STRINGS = {
     isRunning: 'running',
     isFinished: 'finished',
     isPlanned: 'planned',
-    opened: 'Agents panel opened.',
-    closed: 'Agents panel closed.',
+    opened: 'Crew Deck opened.',
+    closed: 'Crew Deck closed.',
     done: 'Done',
     plan: 'Plan',
     design: 'Design',
@@ -74,7 +74,7 @@ const STRINGS = {
     sub: 'sub',
   },
   ru: {
-    pane: 'Агенты',
+    pane: 'Crew Deck',
     context: 'Контекст',
     cost: 'Стоимость',
     tokens: 'Токены',
@@ -95,8 +95,8 @@ const STRINGS = {
     isRunning: 'работает',
     isFinished: 'завершён',
     isPlanned: 'запланирована',
-    opened: 'Панель агентов открыта.',
-    closed: 'Панель агентов закрыта.',
+    opened: 'Crew Deck открыт.',
+    closed: 'Crew Deck закрыт.',
     done: 'Готово',
     plan: 'План',
     design: 'Дизайн',
@@ -649,7 +649,7 @@ const statusMark = (x: number, y: number, status: string, color: string): string
 const svg = (W: number, H: number, body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${PANE_CSS}${CRAB_CSS}${body}</svg>`
 
-// The pane's own title already says "Agents": the header names the flow, if any.
+// The pane's own title says "Crew Deck": the header names the flow, if any.
 // The header has two bands. Above, the folder, its parent path and
 // the git branch in a pill; below, context, tokens, cost and time, each value
 // under its label, the last three on the agent rows' metric columns. Only the
@@ -1297,7 +1297,7 @@ export const register: Register = (on, options) => {
     const runningCount = list.filter(a => a.status === 'running').length
     const planned = plannedOf(f, list)
     const t = totals(list, at)
-    // The pane's title says "Agents"; inside, only the flow's own name.
+    // The pane's title says "Crew Deck"; inside, only the flow's own name.
     const title = f && !f.isFinished ? f.title : ''
 
     const toggleCompact = (
