@@ -1,0 +1,14 @@
+{
+  "name": "crew-deck",
+  "owner": { "name": "davidbalivo", "url": "https://github.com/davidbalivo" },
+  "metadata": { "description": "crew-deck: a live panel of your Claude Code subagents and session." },
+  "plugins": [
+    {
+      "name": "crew-deck",
+      "source": "./plugins/crew-deck",
+      "description": "Mod: a session header (folder, branch, context, cost) and a live panel of every subagent, with cost, tokens, context and steps.",
+      "version": "0.1.0",
+      "category": "mod"
+    }
+  ]
+}
