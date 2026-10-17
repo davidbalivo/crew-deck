@@ -726,6 +726,11 @@ ${text(c1, yVal, 14, 'ml', xml(fmtTokens(t.tokens)), end)}${text(c2, yVal, 14, '
 
 // 96 px, with 20 px of air under the values before the line.
 const HEADER_H = 96
+// "No subagents yet." in 11 px and the `.mk` grey of `ctx`, `in` and `out`.
+const EMPTY_H = 18
+const emptySvg = (W: number, text: string): string =>
+  svg(W, EMPTY_H, `<text class="mk" x="0" y="13" font-family="${FONT}" font-size="11">${xml(text)}</text>`)
+
 const headerHeight = (title: string): number => (title ? 28 : 0) + HEADER_H
 
 // The task's own progress when the worker reports steps; a finished run is full.
@@ -1353,7 +1358,12 @@ export const register: Register = (on, options) => {
             width={W}
             height={headerHeight(title)}
           />
-          {isEmpty && <Text dimColor>{s.empty}</Text>}
+          {isEmpty && (
+            // The empty state takes the same air as the sections and the labels' grey.
+            <Box key="empty" marginTop={1}>
+              <Svg source={emptySvg(W, s.empty)} alt={s.empty} width={W} height={EMPTY_H} />
+            </Box>
+          )}
           {runningRows.length > 0 && (
             // The same air above Running as above Finished.
             <Box key="h-run" marginTop={1}>
