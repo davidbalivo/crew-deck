@@ -657,16 +657,16 @@ const headerSvg = (W: number, title: string, t: ReturnType<typeof totals>, where
   // Band 2: labels, then values 20 px lower; context left, the rest on columns.
   const yLab = top + 55
   const yVal = top + 75
-  const pct = where.ctxPct
-  const pctClass = ctxLevel(pct ?? 0)
-  const fill = pct === undefined ? 0 : Math.round((48 * Math.min(100, pct)) / 100)
+  const pct = where.ctxPct ?? 0
+  const pctClass = ctxLevel(pct)
+  const fill = Math.round((48 * Math.min(100, pct)) / 100)
   return svg(
     W,
     headerHeight(title),
     `${title ? `<text class="t" x="0" y="15" font-family="${FONT}" font-size="14" font-weight="600">${xml(fitText(title, 14, W))}</text>` : ''}
 ${text(0, yId, 13, 't', xml(folder), bold)}${path}${pill}
 ${text(0, yLab, 11, 'm', s.context)}${text(c1, yLab, 11, 'm', s.tokens, end)}${text(c2, yLab, 11, 'm', s.cost, end)}${text(c3, yLab, 11, 'm', s.time, end)}
-${pct === undefined ? text(0, yVal, 14, 'm', '—', bold) : text(0, yVal, 14, pctClass, `${pct}%`, bold)}
+${text(0, yVal, 14, pctClass, `${pct}%`, bold)}
 ${text(c1, yVal, 14, 'ml', xml(fmtTokens(t.tokens)), end)}${text(c2, yVal, 14, 'mvC', xml(fmtCost(t.cost)), end + bold)}${text(c3, yVal, 14, 'ml', xml(fmtTime(t.time)), end)}
 <rect class="k" x="0" y="${yVal + 5}" width="48" height="2" rx="1"/><rect class="${pctClass}" x="0" y="${yVal + 5}" width="${fill}" height="2" rx="1"/>
 <line class="ln" x1="0" y1="${top + HEADER_H - 0.5}" x2="${W}" y2="${top + HEADER_H - 0.5}"/>`,
@@ -1302,7 +1302,7 @@ export const register: Register = on => {
         <Box flexDirection="column">
           <Svg
             source={headerSvg(W, title, t, where)}
-            alt={[title, where.folder, where.path, where.branch, where.ctxPct === undefined ? '' : `${s.context} ${where.ctxPct}%`, summary].filter(Boolean).join(', ')}
+            alt={[title, where.folder, where.path, where.branch, `${s.context} ${where.ctxPct ?? 0}%`, summary].filter(Boolean).join(', ')}
             width={W}
             height={headerHeight(title)}
           />
