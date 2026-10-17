@@ -19,8 +19,6 @@ const env = atom({ plugin: 'crew-deck', key: 'env' } as const, { folder: '', pat
 const TOOL = 'mcp__crew-deck__progress'
 const STEP_TOOL = 'mcp__crew-deck__step'
 const PANE = 'crew-deck'
-// Delay before the default open, so filetree's pane opens first.
-const AUTO_OPEN_DELAY_MS = 2500
 const PHASES: readonly Phase[] = ['plan', 'design', 'delegate', 'review', 'close']
 // Palette in one place. Accent = Claude clay.
 const ACCENT = '#D97757'
@@ -1104,13 +1102,9 @@ export const register: Register = (on, options) => {
       })()
     })
 
-    // Open the agents panel by default on every session.
-    // Waits so it opens after filetree's pane (opened in the background) and stays in front.
-    void (async () => {
-      await $.clock.sleep(AUTO_OPEN_DELAY_MS)
-      const isOpen = (await $.ui.panes()).some(p => p.id === PANE)
-      if (!isOpen) await $.ui.open({ id: PANE, title: tr().pane })
-    })()
+    // Open the agents panel by default on every session, right away.
+    const isOpen = (await $.ui.panes()).some(p => p.id === PANE)
+    if (!isOpen) void $.ui.open({ id: PANE, title: tr().pane })
     return started
   })
 
