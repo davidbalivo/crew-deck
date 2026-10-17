@@ -7,7 +7,7 @@
       "name": "crew-deck",
       "source": "./plugins/crew-deck",
       "description": "Mod: a session header (folder, branch, context, cost) and a live panel of every subagent, with cost, tokens, context and steps.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "category": "mod"
     }
   ]

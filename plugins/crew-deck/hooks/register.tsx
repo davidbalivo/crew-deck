@@ -54,7 +54,7 @@ const STRINGS = {
     running: 'Running',
     finished: 'Finished',
     planned: 'Planned',
-    empty: 'No subagents yet.',
+    empty: 'No subagents yet',
     round: 'round',
     failed: 'error',
     after: 'after',
@@ -86,7 +86,7 @@ const STRINGS = {
     running: 'Работают',
     finished: 'Завершены',
     planned: 'Запланированы',
-    empty: 'Субагентов пока нет.',
+    empty: 'Субагентов пока нет',
     round: 'раунд',
     failed: 'ошибка',
     after: 'после',
@@ -726,7 +726,7 @@ ${text(c1, yVal, 14, 'ml', xml(fmtTokens(t.tokens)), end)}${text(c2, yVal, 14, '
 
 // 96 px, with 20 px of air under the values before the line.
 const HEADER_H = 96
-// "No subagents yet." in 11 px and the `.mk` grey of `ctx`, `in` and `out`.
+// "No subagents yet" in 11 px and the `.mk` grey of `ctx`, `in` and `out`.
 const EMPTY_H = 18
 const emptySvg = (W: number, text: string): string =>
   svg(W, EMPTY_H, `<text class="mk" x="0" y="13" font-family="${FONT}" font-size="11">${xml(text)}</text>`)
