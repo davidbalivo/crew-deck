@@ -790,9 +790,12 @@ ${mark}${groupEnd}`,
   // Three lines, centred. Line 2 is the model and its effort (plus
   // round, subagents and failure); line 3 the agent type, then the steps.
   const [l1 = 0, l2 = 0, l3 = 0] = baselines(H, 3, g.gap)
-  const meta = [a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)]
-  if (a.round > 1) meta.push(`${S.round} ${a.round}`)
-  if (row.kids > 0) meta.push(`↳ ${row.kids} ${S.sub}`)
+  // The model in the row's grey; its effort and the round in the lighter `.mk`
+  // grey, as on the main thread's line.
+  const meta: [string, string][] = [[modelName(a.model), 's']]
+  if (a.effort) meta.push([` · ${a.effort}`, 'mk'])
+  if (a.round > 1) meta.push([` · ${S.round} ${a.round}`, 'mk'])
+  if (row.kids > 0) meta.push([` · ↳ ${row.kids} ${S.sub}`, 's'])
   // The run's end, when it is not a plain finish, bold: a failure in red, a stop
   // in the light `.mk` grey.
   const [tail, tailCls] =
@@ -803,8 +806,13 @@ ${mark}${groupEnd}`,
         : a.isStopRequested
           ? [` · ${S.stopping}…`, 'mk']
           : ['', '']
+  // Each part in its grey while the line fits; past that, the whole cut in the row's grey.
+  const metaPlain = meta.map(([t]) => t).join('')
+  const metaRoom = Math.max(0, metaW - textWidth(tail, 11))
   const metaRich =
-    xml(fitText(meta.join(' · '), 11, Math.max(0, metaW - textWidth(tail, 11)))) + (tail ? `<tspan class="${tailCls}" font-weight="600">${xml(tail)}</tspan>` : '')
+    (textWidth(metaPlain, 11) <= metaRoom
+      ? meta.map(([t, cls]) => `<tspan class="${cls}">${xml(t)}</tspan>`).join('')
+      : xml(fitText(metaPlain, 11, metaRoom))) + (tail ? `<tspan class="${tailCls}" font-weight="600">${xml(tail)}</tspan>` : '')
 
   let line3 = ''
   if (a.stepTotal) {
