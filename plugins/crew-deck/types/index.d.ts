@@ -1,21 +1,3 @@
-export type Phase = 'plan' | 'design' | 'delegate' | 'review' | 'close'
-
-export type PlannedTask = {
-  title: string
-  tier: string
-  after: number[]
-}
-
-export type Flow = {
-  title: string
-  total: number
-  done: number
-  running: number
-  phase: Phase
-  isFinished: boolean
-  tasks: PlannedTask[]
-}
-
 export type AgentStatus = 'running' | 'done' | 'failed'
 
 export type AgentRun = {
@@ -51,7 +33,6 @@ export type Panel = {
   isDoneCollapsed: boolean
   /** Ids of runs that ended well, unfolded by their arrow. Absent in state saved before this field existed. */
   expanded?: string[]
-  autoOpenedFor: string
 }
 
 /** Where the session works and how full its context is, for the header. */
@@ -69,7 +50,6 @@ export type Env = {
 declare module 'claude-code' {
   interface PluginState {
     'crew-deck': {
-      flow: Flow | null
       agents: AgentRun[]
       panel: Panel
       now: number

@@ -30,12 +30,9 @@ Then run `/reload-plugins`. The panel opens on its own; `/crew-deck` opens and c
 
 Claude Code reports tokens, not money. crew-deck multiplies each kind of token (input, output, cache read, cache write) by a fixed price table in `hooks/register.tsx` (`PRICES`), taken from the [official pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on 2026-10-17. Fast mode, 1-hour cache writes and US-only inference are not priced, because the engine does not say when they apply.
 
-## Tools for subagents
+## Tool for subagents
 
-The mod registers two tools:
-
-- `progress`: an orchestrator reports a planned flow (title, tasks, phase, done). Made for the savvy-flow skill.
-- `step`: a subagent reports its own steps (`done`, `total`, a short note), drawn as the blocks on its row.
+The mod registers one tool, `step`. A subagent reports its own steps with it (`done`, `total`, a short note). The panel draws them as the blocks on its row.
 
 ## Credits
 
