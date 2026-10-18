@@ -47,6 +47,9 @@ const S = {
   isRunning: 'running',
   isFinished: 'finished',
   isFailed: 'failed',
+  isStopped: 'stopped',
+  stopping: 'stopping',
+  confirmStop: 'press ■ again to stop',
   agent: 'agent',
   agents: 'agents',
   opened: 'opened',
@@ -256,8 +259,6 @@ const PANE_CSS = `<style>
 @media (prefers-color-scheme: dark){.t{fill:#ECEBE8}.s{fill:#BDBCB6}.m{fill:#97968F}.k{fill:#3A3A37}.ln{stroke:#2E2E2C}.tile{fill:#262625}.card{fill:#2A2A28}.tr{stroke:#4A4A47}
 .mvC{fill:#8FC8BF}.ml{fill:#97968F}.mk{fill:#6C6B66}
 .cR{fill:#E08A6B}.cF{fill:#F2726B}.cW{fill:#E8A33D}.cG{fill:#5DBE8A}.cO{fill:#F08A4B}.sF{stroke:#F2726B}.sM{stroke:#97968F}${bodyCss(1)}}
-.live{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.35}}
-@media (prefers-reduced-motion: reduce){.live{animation:none}}
 </style>`
 
 // Pixel Clawd from DockCrab (Clawdy): a 24×18 crab on a 30×28 grid. Explore
@@ -336,12 +337,20 @@ const crab = (x: number, y: number, costume: Costume, isWalking: boolean, scale:
   return `<g transform="translate(${x},${y}) scale(${scale})" shape-rendering="crispEdges"><g class="c-${costume}${isWalking ? ' run' : ''}">${body}${group('la')}${group('lb')}</g></g>`
 }
 
-// A finished run shows its fold arrow instead, so only these two have a mark.
-const statusMark = (x: number, y: number, status: Exclude<AgentStatus, 'done'>): string => {
-  // Running is a pulsing clay dot, failed a red cross.
-  if (status === 'running') return `<circle class="live cR" cx="${x}" cy="${y}" r="3"/>`
-  return `<path class="sF" d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke-width="1.8" stroke-linecap="round"/>`
-}
+// A run still working shows its stop button in the slot, a finished one its
+// fold arrow; the others draw their mark there: failed a red cross, stopped a
+// grey square.
+const statusMark = (x: number, y: number, status: 'failed' | 'stopped'): string =>
+  status === 'failed'
+    ? `<path class="sF" d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke-width="1.8" stroke-linecap="round"/>`
+    : `<rect class="m" x="${x - 4}" y="${y - 4}" width="8" height="8" rx="1.5"/>`
+
+// Runs whose slot holds a Button beside the drawing: the stop, or the fold arrow.
+const hasSlotButton = (a: AgentRun): boolean => a.status === 'running' || a.status === 'done'
+
+// What a run says it is, for a screen reader.
+const stateOf = (a: AgentRun): string =>
+  a.status === 'running' ? (a.isStopRequested ? S.stopping : S.isRunning) : a.status === 'stopped' ? S.isStopped : a.status === 'failed' ? S.isFailed : S.isFinished
 
 const svg = (W: number, H: number, body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${PANE_CSS}${CRAB_CSS}${body}</svg>`
@@ -688,7 +697,7 @@ const stepBlocks = (x: number, base: number, done: number, total: number): [stri
 // The "two densities" layout. In full, the left block (title; type,
 // model and effort; steps and note) faces the metrics table (cost, time; context;
 // total, sent and generated tokens). Folded, the title faces cost and time.
-const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold = false): string => {
+const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold = false, isArmed = false): string => {
   const { a } = row
   const d = Math.min(row.depth, MAX_DEPTH)
   const isSub = d > 0
@@ -698,8 +707,8 @@ const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold =
   const crabY = crabTop(H, sc)
   const x0 = ind + g.textX
   const [c1, c2, c3] = rowEdges(W)
-  // A finished run leaves the slot to its fold arrow, a Button beside the drawing.
-  const svgW = a.status === 'done' ? W - ARROW_W : W
+  // A run with a Button in the slot leaves it to the Button, beside the drawing.
+  const svgW = hasSlotButton(a) ? W - ARROW_W : W
   const crabBottom = crabY + Math.round(28 * sc)
 
   // Tree lines: ancestors with later siblings keep their rail; this row's own
@@ -728,7 +737,7 @@ const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold =
   const time = fmtTime(elapsed(a, at))
   const crabSvg = `<g class="b${bodyIdx}">${crab(ind, crabY, costumeOf(a.type), a.status === 'running', sc)}</g>`
   const groupEnd = row.isGroupEnd ? `<line class="ln" x1="0" y1="${H - 0.5}" x2="${W - ARROW_W}" y2="${H - 0.5}"/>` : ''
-  const mark = a.status === 'done' ? '' : statusMark(W - ARROW_W / 2, Math.round(H / 2), a.status)
+  const mark = a.status === 'failed' || a.status === 'stopped' ? statusMark(W - ARROW_W / 2, Math.round(H / 2), a.status) : ''
 
   if (isFold) {
     const [y] = baselines(H, 1, 0)
@@ -775,9 +784,19 @@ ${mark}${groupEnd}`,
   const meta = [a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)]
   if (a.round > 1) meta.push(`${S.round} ${a.round}`)
   if (row.kids > 0) meta.push(`↳ ${row.kids} ${S.sub}`)
-  const failed = a.status === 'failed' ? ` · ${S.failed}` : ''
+  // The run's end, when it is not a plain finish: a failure in red, a stop in grey.
+  const [tail, tailCls] =
+    a.status === 'failed'
+      ? [` · ${S.failed}`, 'cF']
+      : a.status === 'stopped'
+        ? [` · ${S.isStopped}`, 'm']
+        : a.isStopRequested
+          ? [` · ${S.stopping}…`, 'm']
+          : isArmed
+            ? [` · ${S.confirmStop}`, 'cF']
+          : ['', '']
   const metaRich =
-    xml(fitText(meta.join(' · '), 11, Math.max(0, metaW - textWidth(failed, 11)))) + (failed ? `<tspan class="cF" font-weight="600">${xml(failed)}</tspan>` : '')
+    xml(fitText(meta.join(' · '), 11, Math.max(0, metaW - textWidth(tail, 11)))) + (tail ? `<tspan class="${tailCls}" font-weight="600">${xml(tail)}</tspan>` : '')
 
   let line3 = ''
   if (a.stepTotal) {
@@ -822,7 +841,7 @@ const ctxBar = (pct: number, width: number): string => {
   return '█'.repeat(filled) + '░'.repeat(Math.max(0, width - filled))
 }
 
-const STATUS_GLYPH: Record<AgentStatus, string> = { running: '●', done: '✓', failed: '✗' }
+const STATUS_GLYPH: Record<AgentStatus, string> = { running: '●', done: '✓', failed: '✗', stopped: '■' }
 
 // Opens the agents pane, or closes it when it is up; true when it ends up open.
 async function togglePane($: EngineInterface): Promise<boolean> {
@@ -880,6 +899,13 @@ const measured = (prev: Main, u: Pick<SessionUsage, 'context' | 'rateLimits'>): 
   limits: u.rateLimits.map(r => ({ kind: r.kind, pct: r.percentUsed })),
 })
 
+// The stop: what a stopped run answers, how long a first press stays armed.
+const STOP_ANSWER = 'Stopped by the person from the Crew Deck panel before finishing.'
+const ARM_MS = 4000
+
+const isStopRequested = async ($: EngineInterface, agentId: string): Promise<boolean> =>
+  (await read($, agents)).some(a => a.agentId === agentId && a.isStopRequested === true)
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -928,6 +954,12 @@ export const register: Register = on => {
   on('command.run', { command: 'crew-deck' }, async $ => {
     const isOpen = await togglePane($)
     return { text: isOpen ? S.opened : S.closed }
+  })
+
+  // A stopped run's tool calls are refused while its last model request ends.
+  on('tool.call', async ($, e, next) => {
+    if (e.agentId && (await isStopRequested($, e.agentId))) return { deny: STOP_ANSWER }
+    return next(e)
   })
 
   // A worker's own progress: the call runs in the worker's loop, so agentId names it.
@@ -980,6 +1012,11 @@ export const register: Register = on => {
   // Each model request: a subagent's live context, tokens and cost, or the
   // main thread's model, tokens and cost.
   on('turn.step', async function* ($, e, next) {
+    // A run stopped from the panel asks for nothing more: its turn ends here,
+    // and the agent that spawned it reads STOP_ANSWER as its answer.
+    if (e.agentId && (await isStopRequested($, e.agentId))) {
+      return { turnId: e.turnId, index: e.index, answer: STOP_ANSWER, toolUses: [], stopReason: 'end_turn', usage: null }
+    }
     const result = yield* next(e)
     const agentId = e.agentId
     const usage = result.usage
@@ -1051,7 +1088,9 @@ export const register: Register = on => {
           const fallback = a.steps === 0 && e.usage
           return {
             ...a,
-            status: e.reason === 'answer' ? ('done' as const) : ('failed' as const),
+            status: a.isStopRequested ? ('stopped' as const) : e.reason === 'answer' ? ('done' as const) : ('failed' as const),
+            // The stop ends with the turn: a run its parent resumes later works again.
+            isStopRequested: undefined,
             endedAt: at,
             ...(fallback && e.usage
               ? {
@@ -1121,17 +1160,45 @@ export const register: Register = on => {
       const section = (key: string, text: string) => <Svg key={key} source={noteSvg(W, text)} alt={text} width={W} height={NOTE_H} />
 
       // The desktop panel never collapses: no Collapse button, and
-      // Finished always shows. A finished run's drawing is narrower by the
-      // arrow's slot; the others draw their status mark in it.
-      const agentRow = (r: TreeRow, state: string) => {
+      // Finished always shows. A run still working or finished has a Button in
+      // the slot right of its drawing: the stop, or the fold arrow; the others
+      // draw their status mark there.
+      // The stop takes two presses: the first arms it for ARM_MS (the square at
+      // full strength, the row asking for a second press in red), the second
+      // stops the run. A Button takes a label only, no colored child. A run
+      // already stopping shows a dim square that takes no press.
+      const isArmed = (a: AgentRun): boolean => p.armedStop?.id === a.id && at - p.armedStop.at < ARM_MS
+      const stopSlot = (a: AgentRun) => {
+        if (a.isStopRequested) return <Text key={`stop-${a.id}`} dimColor>■</Text>
+        if (isArmed(a)) {
+          const stop = () =>
+            Promise.all([
+              update($, agents, rows => rows.map(x => (x.id === a.id ? { ...x, isStopRequested: true } : x))),
+              update($, panel, prev => ({ ...prev, armedStop: undefined })),
+            ])
+          return (
+<Button key={`stop-${a.id}`} label="■" plain onPress={() => void stop()} />
+          )
+        }
+        const arm = async () => {
+          const armedAt = await $.clock.now()
+          await update($, now, () => armedAt)
+          await update($, panel, prev => ({ ...prev, armedStop: { id: a.id, at: armedAt } }))
+        }
+        return (
+<Button key={`stop-${a.id}`} label="■" plain dimColor onPress={() => void arm()} />
+        )
+      }
+      const agentRow = (r: TreeRow) => {
         const isFold = isFolded(r.a, p)
-        const art = <Svg source={agentSvg(W, r, at, bodyIndexOf(list, r.a), isFold)} alt={altOf(r, state)} width={r.a.status === 'done' ? W - ARROW_W : W} height={rowHeight(r, isFold)} />
+        const art = <Svg source={agentSvg(W, r, at, bodyIndexOf(list, r.a), isFold, isArmed(r.a))} alt={altOf(r, stateOf(r.a))} width={hasSlotButton(r.a) ? W - ARROW_W : W} height={rowHeight(r, isFold)} />
         return (
           <Box key={r.a.id} flexDirection="row" alignItems="center" hover={r.a.status === 'done' ? { backgroundColor: ROW_HOVER } : undefined}>
             {art}
             {r.a.status === 'done' && (
               <Button key={`fold-${r.a.id}`} label={isFold ? '▸' : '▾'} plain dimColor onPress={() => void toggleRun(r.a.id)} />
             )}
+            {r.a.status === 'running' && stopSlot(r.a)}
           </Box>
         )
       }
@@ -1156,14 +1223,14 @@ export const register: Register = on => {
               {section('h-run-text', `${S.running} · ${runningCount}`)}
             </Box>
           )}
-          {runningRows.map(r => agentRow(r, r.a.status === 'running' ? S.isRunning : S.isFinished))}
+          {runningRows.map(agentRow)}
           {finishedRows.length > 0 && (
             // Air above Finished, so it reads as its own group.
             <Box key="h-done" marginTop={1}>
               {section('h-done-text', `${S.finished} · ${finishedRows.length}`)}
             </Box>
           )}
-          {finishedRows.map(r => agentRow(r, S.isFinished))}
+          {finishedRows.map(agentRow)}
         </Box>
       )
     }
@@ -1191,7 +1258,7 @@ export const register: Register = on => {
             <Text bold wrap="truncate-end">
               {a.description || a.type}
             </Text>
-            <Text color={a.status === 'failed' ? 'red' : a.status === 'done' ? 'green' : color}>{STATUS_GLYPH[a.status]}</Text>
+            <Text color={a.status === 'failed' ? 'red' : a.status === 'done' ? 'green' : a.status === 'stopped' ? 'gray' : color}>{STATUS_GLYPH[a.status]}</Text>
           </Box>
           <Text dimColor wrap="truncate-end">
             {cont}

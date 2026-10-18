@@ -1,4 +1,5 @@
-export type AgentStatus = 'running' | 'done' | 'failed'
+/** `stopped`: the person stopped it from the panel. */
+export type AgentStatus = 'running' | 'done' | 'failed' | 'stopped'
 
 export type AgentRun = {
   id: string
@@ -26,6 +27,8 @@ export type AgentRun = {
   stepDone?: number
   stepTotal?: number
   stepNote?: string
+  /** Set by the panel's stop: the run asks for nothing more and ends at its next model request. */
+  isStopRequested?: boolean
 }
 
 export type Panel = {
@@ -33,6 +36,8 @@ export type Panel = {
   isDoneCollapsed: boolean
   /** Ids of runs that ended well, unfolded by their arrow. Absent in state saved before this field existed. */
   expanded?: string[]
+  /** The run whose stop was pressed once, and when; a second press within ARM_MS stops it. */
+  armedStop?: { id: string; at: number }
 }
 
 /** Where the session works, for the header. */
