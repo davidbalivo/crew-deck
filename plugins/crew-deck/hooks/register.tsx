@@ -439,17 +439,17 @@ const spaced = (groups: Figure[][], maxW: number, y: number, size = SIZE): strin
 // Top line: the folder, its parent path and the git branch in a pill, with no
 // title. Below it a soft card holds the usage in two sections, Main thread and
 // Subagents, each under its title; the card starts in this SVG and ends in the
-// subagents' one, stacked right under it. Inside the card the left side is
-// inset by PAD; the right side keeps the agent rows' columns. Right of the
-// time column the rows keep room for their status mark and fold arrow; the card
-// splits that room, less PAD, into equal margins outside it on both sides.
+// subagents' one, stacked right under it. Right of the time column the rows
+// keep room for their status mark and fold arrow (ARROW_W + ROW_GAP); the card
+// takes that room as its right margin outside plus PAD inside, and mirrors both
+// on the left, so the right side keeps the agent rows' columns.
 // Main thread: two rows mirrored around the context bar. On the left the model
 // over the cost and tokens; on the right two columns that share the agent rows'
 // cost and time edges: the context percentage over one limit, the context
 // tokens over the other. Everything ends on the time column.
 const PAD = 12
 // A function, not a constant: ARROW_W and ROW_GAP are declared further down.
-const cardInset = (): number => (ARROW_W + ROW_GAP - PAD) / 2
+const cardInset = (): number => ARROW_W + ROW_GAP - PAD
 const CARD_R = 8
 const TITLE_GAP = 25
 const SECTION_GAP = 44
@@ -641,8 +641,8 @@ const COL_GAP = 20
 // The slot right of each desktop row's time column: a finished run's fold
 // arrow, or the status mark of a run still working or failed. ROW_GAP keeps it
 // clear of the time column.
-const ARROW_W = 20
-const ROW_GAP = 8
+const ARROW_W = 16
+const ROW_GAP = 4
 // The metric columns of the rows, and of the header above them, from the pane's width.
 const rowEdges = (W: number): [number, number, number] => metricEdges(W - ARROW_W - ROW_GAP)
 // A foldable row lights while hovered. A translucent grey reads on
