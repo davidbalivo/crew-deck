@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { RenderChildren } from 'claude-code'
+import type { RenderChildren, RenderElement } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 const PANE = {
@@ -26,19 +26,24 @@ const spawnRun = async ($: Engine): Promise<void> => {
   })
 }
 
-// The handle the host holds for the Button under `key`, as the page gets it.
-const handleOf = (node: RenderChildren, key: string): number | undefined => {
+type ButtonElement = Extract<RenderElement, { type: 'Button' }>
+
+// The Button under `key`, as the page gets it.
+const buttonOf = (node: RenderChildren, key: string): ButtonElement | undefined => {
   if (Array.isArray(node)) {
     for (const child of node) {
-      const h = handleOf(child, key)
-      if (h !== undefined) return h
+      const b = buttonOf(child, key)
+      if (b !== undefined) return b
     }
     return undefined
   }
   if (typeof node !== 'object' || node === null || !('type' in node)) return undefined
-  if (node.type === 'Button' && node.props.key === key) return node.press.handle
-  return 'children' in node ? handleOf(node.children, key) : undefined
+  if (node.type === 'Button' && node.props.key === key) return node
+  return 'children' in node ? buttonOf(node.children, key) : undefined
 }
+
+// The handle the host holds for the Button under `key`.
+const handleOf = (node: RenderChildren, key: string): number | undefined => buttonOf(node, key)?.press.handle
 
 const mountPane = ($: Engine) =>
   $.ui.mount({ plugin: 'crew-deck', surface: 'desktop', component: 'Pane', requestId: 'crew-deck', props: PANE })
@@ -88,6 +93,19 @@ test('the stop keeps its handle while the pane redraws', async ($, on) => {
 
   await ui.press({ key: 'stop-a1' })
   expect((await ui.find({ key: 'stop-a1' }))?.type).not.toBe('Button')
+
+  await ui.unmount()
+})
+
+// The desktop builds the pane's page nodes anew on every drawing; a Button whose
+// look changed under the pointer flashed once a second while runs worked.
+test('the stop keeps its resting look under the pointer', async ($, on) => {
+  mock.clock(on)
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await spawnRun($)
+  const ui = await mountPane($)
+
+  expect(buttonOf(await ui.drawn(), 'stop-a1')?.hover).toEqual({ dimColor: true, backgroundColor: 'rgba(0,0,0,0)' })
 
   await ui.unmount()
 })

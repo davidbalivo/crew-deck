@@ -659,6 +659,12 @@ const rowEdges = (W: number): [number, number, number] => metricEdges(W - ARROW_
 // A foldable row lights while hovered. A translucent grey reads on
 // both themes; no theme key paints a background.
 const ROW_HOVER = 'rgba(128,128,128,0.08)'
+// The slot Buttons keep their resting look under the pointer: dim, no
+// background. The desktop builds the pane's page nodes anew on every drawing
+// (once a second while runs work), so a Button under the pointer lost its
+// hover look and faded back in: a flash. With the same look either way, a new
+// drawing has nothing to fade. Needs the row's keyed Box.
+const SLOT_HOVER = { dimColor: true, backgroundColor: 'rgba(0,0,0,0)' } as const
 // Widths also fit the header's 14 px bold totals (bold runs ~6% wider).
 const HEADER_BOLD = 1.06
 const METRIC_COLS: [number, number, number] = [
@@ -1193,7 +1199,7 @@ export const register: Register = on => {
         drawnKeys.add(key)
         const prev = keptButtons.get(key)
         if (prev?.label === label) return prev.element
-        const element = <Button key={key} label={label} plain dimColor onPress={onPress} />
+        const element = <Button key={key} label={label} plain dimColor hover={SLOT_HOVER} onPress={onPress} />
         keptButtons.set(key, { label, element })
         return element
       }
