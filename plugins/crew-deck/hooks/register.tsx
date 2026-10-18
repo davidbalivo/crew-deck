@@ -742,10 +742,10 @@ const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold =
   if (isFold) {
     const [y] = baselines(H, 1, 0)
     const size = isSub ? 11 : 12
-    // A stopped run keeps saying so after its title, in grey.
+    // A stopped run keeps saying so after its title, bold in the light `.mk` grey.
     const stopped = a.status === 'stopped' ? ` · ${S.isStopped}` : ''
     const titleW = Math.max(0, c2 - METRIC_COLS[1] - x0 - 12 - textWidth(stopped, 11))
-    const title = xml(fitText(a.description || a.type, size, titleW)) + (stopped ? `<tspan class="m" font-size="11">${xml(stopped)}</tspan>` : '')
+    const title = xml(fitText(a.description || a.type, size, titleW)) + (stopped ? `<tspan class="mk" font-size="11" font-weight="600">${xml(stopped)}</tspan>` : '')
     return svg(
       svgW,
       H,
@@ -787,14 +787,15 @@ ${mark}${groupEnd}`,
   const meta = [a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)]
   if (a.round > 1) meta.push(`${S.round} ${a.round}`)
   if (row.kids > 0) meta.push(`↳ ${row.kids} ${S.sub}`)
-  // The run's end, when it is not a plain finish: a failure in red, a stop in grey.
+  // The run's end, when it is not a plain finish, bold: a failure in red, a stop
+  // in the light `.mk` grey.
   const [tail, tailCls] =
     a.status === 'failed'
       ? [` · ${S.failed}`, 'cF']
       : a.status === 'stopped'
-        ? [` · ${S.isStopped}`, 'm']
+        ? [` · ${S.isStopped}`, 'mk']
         : a.isStopRequested
-          ? [` · ${S.stopping}…`, 'm']
+          ? [` · ${S.stopping}…`, 'mk']
           : ['', '']
   const metaRich =
     xml(fitText(meta.join(' · '), 11, Math.max(0, metaW - textWidth(tail, 11)))) + (tail ? `<tspan class="${tailCls}" font-weight="600">${xml(tail)}</tspan>` : '')
