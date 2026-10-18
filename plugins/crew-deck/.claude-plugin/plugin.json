@@ -1,7 +1,7 @@
 {
   "name": "crew-deck",
-  "version": "0.3.0",
-  "description": "A session header (folder, git branch, context, cost, tokens, time) and a live panel of every subagent: model, effort, steps, context, tokens in and out, estimated cost and time. Runs that end well fold to one line.",
+  "version": "0.4.0",
+  "description": "A header with the workspace (folder, git branch), the main thread (model, context, cost, tokens, limits) and the subagents' totals, and a live panel of every subagent: model, effort, steps, context, tokens in and out, estimated cost and time. Runs that end well fold to one line.",
   "author": {
     "name": "davidbalivo",
     "url": "https://github.com/davidbalivo"

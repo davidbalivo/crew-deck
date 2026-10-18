@@ -4,10 +4,13 @@ A Claude Code mod for the desktop app: a side panel with your session at the top
 
 ## What it shows
 
-- Session header:
-  - Project folder, its parent path and the current git branch.
-  - Context used by the main thread, with a thin bar. It turns from green (below 40%) to amber (below 50%), orange (below 60%) and red.
-  - Totals for all subagents: tokens, estimated cost and time.
+- Workspace: project folder, its parent path and the current git branch.
+- Main thread:
+  - Model and effort.
+  - Context used, as a percentage and in tokens against the window, with a bar. It turns from green (below 40%) to amber (below 50%), orange (below 60%) and red.
+  - Estimated cost and tokens of the main thread's own requests, total and split into sent (`in`) and generated (`out`).
+  - The account's 5-hour and 7-day limits, when the engine reports them. They turn orange from 80% and red from 95%.
+- Subagents: their totals for tokens, estimated cost and time.
 - One row per subagent, grouped under "Running" and "Finished":
   - A pixel crab with its own body color, indented under the agent that spawned it.
   - Title, model and effort, agent type, and the steps it reports (`3/5` plus small blocks).

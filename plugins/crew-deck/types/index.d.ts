@@ -35,7 +35,7 @@ export type Panel = {
   expanded?: string[]
 }
 
-/** Where the session works and how full its context is, for the header. */
+/** Where the session works, for the header. */
 export type Env = {
   /** Last segment of the session's root. */
   folder: string
@@ -43,8 +43,34 @@ export type Env = {
   path: string
   /** Current git branch, `@abc1234` on a detached HEAD; absent outside git. */
   branch?: string
-  /** Main thread's context use, 0 to 100; absent before the first response. */
+}
+
+/** One rate-limit window of the account, as the engine reports it. */
+export type Limit = {
+  /** `five_hour`, `seven_day` or `spend_limit`. */
+  kind: string
+  /** How much of the window is used, 0 to 100 (past 100 on an exceeded spend limit). */
+  pct: number
+}
+
+/** The main thread: its model, its context and what its own requests used. */
+export type Main = {
+  model?: string
+  effort?: string
+  /** Input tokens of the last response; absent before the first response. */
+  ctxTokens?: number
+  /** The model's context window, in tokens. */
+  ctxWindow?: number
+  /** `ctxTokens` over `ctxWindow`, 0 to 100; absent before the first response. */
   ctxPct?: number
+  /** Tokens sent (cache reads and writes included) plus tokens generated. */
+  tokens: number
+  inputTokens: number
+  outputTokens: number
+  /** Estimated from `PRICES`, as for the subagents. */
+  costUsd: number
+  /** Empty off a subscription or before the first reading. */
+  limits: Limit[]
 }
 
 declare module 'claude-code' {
@@ -54,6 +80,7 @@ declare module 'claude-code' {
       panel: Panel
       now: number
       env: Env
+      main: Main
     }
   }
 }

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, SessionUsage } from 'claude-code'
 
-import type { AgentRun, AgentStatus, Env, Panel } from '../types'
+import type { AgentRun, AgentStatus, Env, Limit, Main, Panel } from '../types'
 
 const agents = atom({ plugin: 'crew-deck', key: 'agents' } as const, [])
 const panel = atom({ plugin: 'crew-deck', key: 'panel' } as const, {
@@ -10,9 +10,16 @@ const panel = atom({ plugin: 'crew-deck', key: 'panel' } as const, {
   expanded: [],
 })
 const now = atom({ plugin: 'crew-deck', key: 'now' } as const, 0)
-// Where the session works (folder, its parent, git branch) and how full
-// its context is, for the panel's header.
+// Where the session works (folder, its parent, git branch), for the header.
 const env = atom({ plugin: 'crew-deck', key: 'env' } as const, { folder: '', path: '' } as Env)
+// The main thread's model, context and own usage, for its section.
+const main = atom({ plugin: 'crew-deck', key: 'main' } as const, {
+  tokens: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  costUsd: 0,
+  limits: [],
+})
 
 const STEP_TOOL = 'mcp__crew-deck__step'
 const PANE = 'crew-deck'
@@ -22,6 +29,9 @@ const PANE = 'crew-deck'
 
 const S = {
   pane: 'Crew Deck',
+  repo: 'Repo',
+  mainThread: 'Main thread',
+  subagents: 'Subagents',
   context: 'Context',
   cost: 'Cost',
   tokens: 'Tokens',
@@ -36,6 +46,9 @@ const S = {
   tokensWord: 'tokens',
   isRunning: 'running',
   isFinished: 'finished',
+  isFailed: 'failed',
+  agent: 'agent',
+  agents: 'agents',
   opened: 'opened',
   closed: 'closed',
   sub: 'sub',
@@ -356,19 +369,93 @@ const fitMiddle = (s: string, size: number, maxW: number): string => {
 const BRANCH_ICON = (x: number, y: number): string =>
   `<g transform="translate(${x},${y})" class="sM" fill="none" stroke-width="1.2" stroke-linecap="round"><circle cx="2" cy="2" r="1.5"/><circle cx="2" cy="10" r="1.5"/><circle cx="8" cy="4" r="1.5"/><path d="M2 3.5v5M8 5.5c0 2.5-6 2-6 3"/></g>`
 
-// The header's context figure and bar change color as the main thread fills up:
+// The main thread's context figure and bar change color as it fills up:
 // green below 40%, amber below 50%, orange below 60%, red from there.
 const ctxLevel = (pct: number): string => (pct < 40 ? 'cG' : pct < 50 ? 'cW' : pct < 60 ? 'cO' : 'cF')
 
-const headerSvg = (W: number, t: ReturnType<typeof totals>, where: Env): string => {
-  const [c1, c2, c3] = metricEdges(W - ARROW_W - 24)
-  const text = (x: number, y: number, size: number, cls: string, body: string, extra = ''): string =>
-    `<text class="${cls}" x="${x}" y="${y}" font-family="${FONT}" font-size="${size}" font-variant-numeric="tabular-nums"${extra}>${body}</text>`
-  const end = ' text-anchor="end"'
-  const bold = ' font-weight="600"'
+// A rate-limit window grey until 80%, orange until 95%, red from there.
+const limitLevel = (pct: number): string => (pct < 80 ? 'ml' : pct < 95 ? 'cO' : 'cF')
 
-  // Band 1: folder, then its parent path, then the branch pill ending on column 3.
-  const yId = 23
+const LIMIT_LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_limit: 'spend' }
+
+// The windows the section shows, in a fixed order, at most two.
+const limitsOf = (list: readonly Limit[]): { label: string; pct: number }[] =>
+  Object.entries(LIMIT_LABEL)
+    .flatMap(([kind, label]) => {
+      const l = list.find(x => x.kind === kind)
+      return l ? [{ label, pct: Math.round(l.pct) }] : []
+    })
+    .slice(0, 2)
+
+// A window size reads `1M`, not `1.0M`.
+const fmtWindow = (n: number): string => (n >= 1e6 && n % 1e6 === 0 ? `${n / 1e6}M` : fmtTokens(n))
+
+const svgText = (x: number, y: number, size: number, cls: string, body: string, extra = ''): string =>
+  `<text class="${cls}" x="${x}" y="${y}" font-family="${FONT}" font-size="${size}" font-variant-numeric="tabular-nums"${extra}>${body}</text>`
+const END = ' text-anchor="end"'
+const BOLD = ' font-weight="600"'
+// Bold runs ~6% wider than the estimate.
+const boldWidth = (s: string, size: number): number => textWidth(s, size) * HEADER_BOLD
+
+// A section's title: bold, in the lighter `ctx` grey.
+const sectionTitle = (y: number, title: string): string => svgText(0, y, 11, 'mk', xml(title), BOLD)
+
+// One figure of a row: its width and its markup, drawn at a given x.
+type Figure = { w: number; body: string }
+
+// A grey figure with its word in the lighter `ctx` grey, before or after it.
+const labelled = (value: string, word: string, side: 'before' | 'after' = 'before', size = SIZE): Figure => ({
+  w: textWidth(`${word} ${value}`, size),
+  body:
+    side === 'before'
+      ? `<tspan class="mk">${xml(word)}</tspan> <tspan class="ml">${xml(value)}</tspan>`
+      : `<tspan class="ml">${xml(value)}</tspan> <tspan class="mk">${xml(word)}</tspan>`,
+})
+
+// Figures in a row from x = 0, FIGURE_GAP apart. A group that does not fit in
+// `maxW` is left out whole, and so are the ones after it.
+const FIGURE_GAP = 20
+const spaced = (groups: Figure[][], maxW: number, y: number, size = SIZE): string => {
+  const out: string[] = []
+  let x = 0
+  for (const group of groups) {
+    const gaps = out.length ? group.length : group.length - 1
+    const w = group.reduce((sum, f) => sum + f.w, 0) + FIGURE_GAP * gaps
+    if (x + w > maxW) break
+    for (const f of group) {
+      if (out.length) x += FIGURE_GAP
+      out.push(svgText(Math.round(x), y, size, 'ml', f.body))
+      x += f.w
+    }
+  }
+  return out.join('')
+}
+
+// The header has three sections, each under a title in the `ctx` grey, its
+// content TITLE_GAP px lower, SECTION_GAP px from one section's last line to the next
+// title. The third, the subagents' sums, is a band of its own below.
+// Above, the repo: the folder, its parent path and the git branch in a pill.
+// Below, the main thread: two rows mirrored around the context bar. On the
+// left the model over the cost and tokens; on the right two columns that share
+// the agent rows' cost and time edges: the context percentage over one limit,
+// the context tokens over the other. Everything ends on the time column.
+const SECTION_GAP = 47
+const TITLE_GAP = 27
+const Y_REPO = 18
+const Y_ID = Y_REPO + TITLE_GAP
+const Y_TITLE = Y_ID + SECTION_GAP
+const Y_ROW1 = Y_TITLE + TITLE_GAP
+const BAR_Y = Y_ROW1 + 9
+const BAR_H = 4
+const Y_ROW2 = BAR_Y + BAR_H + 9 + 9
+const HEADER_H = Y_ROW2 + 12
+const SIZE = 12
+const SIZE_KEY = 13
+
+const headerSvg = (W: number, where: Env, m: Main): string => {
+  const [, c2, c3] = metricEdges(W - ARROW_W - 24)
+
+  // Workspace: folder, then its parent path, then the branch pill ending on the time column.
   let pill = ''
   let pillX = c3
   if (where.branch) {
@@ -378,34 +465,104 @@ const headerSvg = (W: number, t: ReturnType<typeof totals>, where: Env): string 
     const pw = Math.round(26 + monoWidth(branch, 11))
     pillX = c3 - pw
     pill =
-      `<rect class="tile" x="${pillX}" y="12" width="${pw}" height="18" rx="6"/>${BRANCH_ICON(pillX + 6, 15)}` +
-      `<text class="s" x="${pillX + 20}" y="25" font-family="${MONO}" font-size="11">${xml(branch)}</text>`
+      `<rect class="tile" x="${pillX}" y="${Y_ID - 11}" width="${pw}" height="18" rx="6"/>${BRANCH_ICON(pillX + 6, Y_ID - 8)}` +
+      `<text class="s" x="${pillX + 20}" y="${Y_ID + 2}" font-family="${MONO}" font-size="11">${xml(branch)}</text>`
   }
   const folder = fitText(where.folder || '—', 13, Math.max(40, pillX - 12 - 60))
   const pathX = Math.round(textWidth(folder, 13) * 1.04 + 6)
   const pathW = pillX - 12 - pathX
-  const path = where.path && pathW > 30 ? text(pathX, yId, 11, 'm', xml(fitMiddle(where.path, 11, pathW))) : ''
+  const path = where.path && pathW > 30 ? svgText(pathX, Y_ID, 11, 'm', xml(fitMiddle(where.path, 11, pathW))) : ''
 
-  // Band 2: labels, then values 20 px lower; context left, the rest on columns.
-  const yLab = 55
-  const yVal = 75
-  const pct = where.ctxPct ?? 0
+  // Main thread. Both left lines stop at the same edge, clear of the cost column's figures.
+  const leftW = Math.max(0, c2 - Math.max(boldWidth('100%', SIZE_KEY), textWidth('spend 100%', SIZE)) - 16)
+  // The model in the row's grey, its effort in the lighter one; the effort goes first when room runs out.
+  const name = m.model ? modelName(m.model) : '—'
+  const effort = m.model && m.effort ? ` · ${m.effort}` : ''
+  const model =
+    effort && textWidth(name + effort, SIZE) <= leftW
+      ? `${xml(name)}<tspan class="mk">${xml(effort)}</tspan>`
+      : xml(fitText(name, SIZE, leftW))
+  const pct = m.ctxPct ?? 0
   const pctClass = ctxLevel(pct)
-  const fill = Math.round((48 * Math.min(100, pct)) / 100)
+  const ctxTokens = m.ctxWindow
+    ? `<tspan class="ml">${xml(fmtTokens(m.ctxTokens ?? 0))}</tspan><tspan class="mk"> / ${xml(fmtWindow(m.ctxWindow))}</tspan>`
+    : ''
+  const fill = Math.round((c3 * Math.min(100, pct)) / 100)
+
+  // Row 2, left: the cost, then the tokens, then sent and generated; a group
+  // that does not fit is left out whole, the last first.
+  const cost = fmtCost(m.costUsd)
+  const figures = spaced(
+    [
+      [{ w: boldWidth(cost, SIZE_KEY), body: `<tspan class="mvC" font-size="${SIZE_KEY}" font-weight="600">${xml(cost)}</tspan>` }],
+      [labelled(fmtTokens(m.tokens), S.tokensWord, 'after')],
+      [labelled(fmtTokens(m.inputTokens), 'in'), labelled(fmtTokens(m.outputTokens), 'out')],
+    ],
+    leftW,
+    Y_ROW2,
+  )
+
+  // Row 2, right: the limits on the time column, then the cost column.
+  const limits = limitsOf(m.limits)
+    .reverse()
+    .map((l, i) =>
+      svgText(i === 0 ? c3 : c2, Y_ROW2, SIZE, 'ml', `<tspan class="mk">${l.label}</tspan> <tspan class="${limitLevel(l.pct)}">${l.pct}%</tspan>`, END),
+    )
+    .join('')
+
   return svg(
     W,
     HEADER_H,
-    `${text(0, yId, 13, 't', xml(folder), bold)}${path}${pill}
-${text(0, yLab, 11, 'm', S.context)}${text(c1, yLab, 11, 'm', S.tokens, end)}${text(c2, yLab, 11, 'm', S.cost, end)}${text(c3, yLab, 11, 'm', S.time, end)}
-${text(0, yVal, 14, pctClass, `${pct}%`, bold)}
-${text(c1, yVal, 14, 'ml', xml(fmtTokens(t.tokens)), end)}${text(c2, yVal, 14, 'mvC', xml(fmtCost(t.cost)), end + bold)}${text(c3, yVal, 14, 'ml', xml(fmtTime(t.time)), end)}
-<rect class="k" x="0" y="${yVal + 5}" width="48" height="2" rx="1"/><rect class="${pctClass}" x="0" y="${yVal + 5}" width="${fill}" height="2" rx="1"/>
-<line class="ln" x1="0" y1="${HEADER_H - 0.5}" x2="${W}" y2="${HEADER_H - 0.5}"/>`,
+    `${sectionTitle(Y_REPO, S.repo)}
+${svgText(0, Y_ID, 13, 't', xml(folder), BOLD)}${path}${pill}
+${sectionTitle(Y_TITLE, S.mainThread)}
+${svgText(0, Y_ROW1, SIZE, 's', model)}
+${svgText(c2, Y_ROW1, SIZE_KEY, pctClass, `${pct}%`, END + BOLD)}${ctxTokens ? svgText(c3, Y_ROW1, SIZE, 'ml', ctxTokens, END) : ''}
+<rect class="k" x="0" y="${BAR_Y}" width="${c3}" height="${BAR_H}" rx="${BAR_H / 2}"/><rect class="${pctClass}" x="0" y="${BAR_Y}" width="${fill}" height="${BAR_H}" rx="${BAR_H / 2}"/>
+${figures}
+${limits}`,
   )
 }
 
-// 96 px, with 20 px of air under the values before the line.
-const HEADER_H = 96
+// The subagents' sums, the header's third section: the title on its own line,
+// SECTION_GAP below the main thread; TITLE_GAP lower the column labels, and
+// the values under them, on the agent rows' columns; then the line that closes
+// the header. Left of the values, how many runs there are, then how many still
+// work and how many failed. Figures take the main thread's sizes: SIZE, and
+// SIZE_KEY for the cost.
+const SUB_TITLE = Y_ROW2 + SECTION_GAP - HEADER_H
+const SUB_LAB = SUB_TITLE + TITLE_GAP
+const SUB_VAL = SUB_LAB + 20
+const SUBAGENTS_H = SUB_VAL + 30
+const subagentsSvg = (W: number, t: ReturnType<typeof totals>, list: readonly AgentRun[]): string => {
+  const [c1, c2, c3] = metricEdges(W - ARROW_W - 24)
+  const running = list.filter(a => a.status === 'running').length
+  const failed = list.filter(a => a.status === 'failed').length
+  const tokens = fmtTokens(t.tokens)
+  // A failed count keeps the red of the failed mark.
+  const failedFigure: Figure = {
+    w: textWidth(`${failed} ${S.isFailed}`, SIZE),
+    body: `<tspan class="cF">${failed}</tspan> <tspan class="mk">${S.isFailed}</tspan>`,
+  }
+  const counts = spaced(
+    [
+      [labelled(String(list.length), list.length === 1 ? S.agent : S.agents, 'after')],
+      running ? [labelled(String(running), S.isRunning, 'after')] : [],
+      failed ? [failedFigure] : [],
+    ].filter(g => g.length),
+    c1 - textWidth(tokens, SIZE) - 16,
+    SUB_VAL,
+  )
+  return svg(
+    W,
+    SUBAGENTS_H,
+    `${sectionTitle(SUB_TITLE, S.subagents)}
+${svgText(c1, SUB_LAB, 11, 'mk', S.tokens, END)}${svgText(c2, SUB_LAB, 11, 'mk', S.cost, END)}${svgText(c3, SUB_LAB, 11, 'mk', S.time, END)}
+${counts}${svgText(c1, SUB_VAL, SIZE, 'ml', xml(tokens), END)}${svgText(c2, SUB_VAL, SIZE_KEY, 'mvC', xml(fmtCost(t.cost)), END + BOLD)}${svgText(c3, SUB_VAL, SIZE, 'ml', xml(fmtTime(t.time)), END)}
+<line class="ln" x1="0" y1="${SUBAGENTS_H - 0.5}" x2="${W}" y2="${SUBAGENTS_H - 0.5}"/>`,
+  )
+}
+
 // "No subagents yet" in 11 px and the `.mk` grey of `ctx`, `in` and `out`.
 const EMPTY_H = 18
 const emptySvg = (W: number, text: string): string =>
@@ -662,12 +819,32 @@ async function refreshEnv($: EngineInterface): Promise<void> {
   await update($, env, prev => (prev.folder === folder && prev.path === path && prev.branch === branch ? prev : { ...prev, folder, path, branch }))
 }
 
+const mainModel = (m: Main): string => (m.model ? (m.effort ? `${modelName(m.model)} · ${m.effort}` : modelName(m.model)) : '—')
+
+// The main thread's section in words: for a screen reader and the terminal.
+const mainSummary = (m: Main): string[] => [
+  `${S.context} ${m.ctxPct ?? 0}%${m.ctxWindow ? ` ${fmtTokens(m.ctxTokens ?? 0)} / ${fmtWindow(m.ctxWindow)}` : ''}`,
+  `${fmtCost(m.costUsd)} · ${fmtTokens(m.tokens)} ${S.tokensWord} · in ${fmtTokens(m.inputTokens)} out ${fmtTokens(m.outputTokens)}`,
+  ...limitsOf(m.limits).map(l => `${l.label} ${l.pct}%`),
+]
+
+// The main thread's context and the account's limits, as the engine measured them.
+const measured = (prev: Main, u: Pick<SessionUsage, 'context' | 'rateLimits'>): Main => ({
+  ...prev,
+  ctxTokens: u.context.tokens,
+  ctxWindow: u.context.window,
+  ctxPct: u.context.percent,
+  limits: u.rateLimits.map(r => ({ kind: r.kind, pct: r.percentUsed })),
+})
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await refreshEnv($).catch(() => undefined)
-    const ctxPct = (await $.session.usage()).context.percent
-    await update($, env, prev => ({ ...prev, ctxPct }))
+    const usage = await $.session.usage()
+    // The model before the first response; each request names it from then on.
+    const model = await $.session.model()
+    await update($, main, prev => ({ ...measured(prev, usage), model }))
     await $.tool.register({
       name: 'step',
       description:
@@ -757,14 +934,27 @@ export const register: Register = on => {
     return started
   })
 
-  // Each model request of a subagent: live context, tokens and cost.
+  // Each model request: a subagent's live context, tokens and cost, or the
+  // main thread's model, tokens and cost.
   on('turn.step', async function* ($, e, next) {
     const result = yield* next(e)
     const agentId = e.agentId
     const usage = result.usage
-    if (!agentId || !usage) return result
+    if (!usage) return result
 
     const model = usage.model || e.model
+    if (!agentId) {
+      await update($, main, prev => ({
+        ...prev,
+        model,
+        effort: typeof e.effort === 'string' ? e.effort : prev.effort,
+        tokens: prev.tokens + inputOf(usage) + (usage.output_tokens || 0),
+        inputTokens: prev.inputTokens + inputOf(usage),
+        outputTokens: prev.outputTokens + (usage.output_tokens || 0),
+        costUsd: prev.costUsd + costOf(model, usage),
+      }))
+      return result
+    }
     await update($, agents, list =>
       list.map(a =>
         a.agentId !== agentId
@@ -793,10 +983,10 @@ export const register: Register = on => {
     return result
   })
 
-  // The header's context figure, pushed after each main-thread turn.
+  // The main thread's context and the account's limits, pushed after each main-thread turn.
   on('session.measure', async ($, e, next) => {
     const result = await next(e)
-    if (e.changed.includes('context')) await update($, env, prev => ({ ...prev, ctxPct: e.context.percent }))
+    if (e.changed.includes('context') || e.changed.includes('rateLimits')) await update($, main, prev => measured(prev, e))
     return result
   })
 
@@ -843,6 +1033,7 @@ export const register: Register = on => {
     const list = await read($, agents)
     const p: Panel = await read($, panel)
     const where: Env = await read($, env)
+    const m: Main = await read($, main)
     const at = Math.max(await read($, now), ...list.map(a => a.startedAt), 0)
 
     // Families, newest first; a family stays together under Running
@@ -908,11 +1099,12 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           <Svg
-            source={headerSvg(W, t, where)}
-            alt={[where.folder, where.path, where.branch, `${S.context} ${where.ctxPct ?? 0}%`, summary].filter(Boolean).join(', ')}
+            source={headerSvg(W, where, m)}
+            alt={[`${S.repo}: ${where.folder}`, where.path, where.branch, `${S.mainThread}: ${mainModel(m)}`, ...mainSummary(m)].filter(Boolean).join(', ')}
             width={W}
             height={HEADER_H}
           />
+          <Svg source={subagentsSvg(W, t, list)} alt={`${S.subagents}: ${summary}`} width={W} height={SUBAGENTS_H} />
           {isEmpty && (
             // The empty state takes the same air as the sections and the labels' grey.
             <Box key="empty" marginTop={1}>
@@ -985,9 +1177,14 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Box flexDirection="row" justifyContent="space-between">
+        <Text dimColor>{S.mainThread}</Text>
+        <Text wrap="truncate-end">{mainModel(m)}</Text>
+        <Text dimColor wrap="truncate-end">
+          {mainSummary(m).join(' · ')}
+        </Text>
+        <Box flexDirection="row" justifyContent="space-between" marginTop={1}>
           <Text dimColor wrap="truncate-end">
-            {fmtCost(t.cost)} · {fmtTokens(t.tokens)} {S.tokensWord} · {fmtTime(t.time)}
+            {S.subagents} · {fmtCost(t.cost)} · {fmtTokens(t.tokens)} {S.tokensWord} · {fmtTime(t.time)}
           </Text>
           {toggleCompact}
         </Box>
