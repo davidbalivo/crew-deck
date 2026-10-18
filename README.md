@@ -1,46 +1,41 @@
 # mission-control
 
-A Claude Code mod for the desktop app: a side panel with your session at the top and every subagent below it, live.
+A Claude Code mod that shows your session and its subagents in a live side panel.
 
 ## What it shows
 
-- Workspace: project folder, its parent path and the current git branch.
-- Main thread:
-  - Model and effort.
-  - Context used, as a percentage and in tokens against the window, with a bar. It turns from green (below 40%) to amber (below 50%), orange (below 60%) and red.
-  - Estimated cost and tokens of the main thread's own requests, total and split into sent (`in`) and generated (`out`).
-  - The account's 5-hour and 7-day limits, when the engine reports them. They turn orange from 80% and red from 95%.
-- Subagents: their totals for tokens, estimated cost and time.
-- One row per subagent, grouped under "Running" and "Finished":
-  - A pixel crab with its own body color, indented under the agent that spawned it.
-  - Title, model and effort, agent type, and the steps it reports (`3/5` plus small blocks).
-  - A borderless table on the right: cost and time, context (`ctx 9% 88k`), and tokens (`307k in 304k out 2k`). Its columns line up with the header and down the whole list.
-- Runs that end well fold to one line. The arrow on the right unfolds them, and foldable rows light up on hover.
-- A running subagent has a stop (■) on the right, on the desktop. One press stops it once its current model request or tool call ends: it asks the model for nothing more, its next tool calls are refused, and the agent that spawned it reads that it was stopped. The row then says "stopped" and folds like a finished run.
-- In the terminal the same content is drawn as text rows.
+- Workspace: folder, parent path and git branch.
+- Main thread: model and effort, context used with a bar that turns from green to red, estimated cost, tokens sent and generated, and the 5-hour and 7-day limits.
+- Subagent totals: how many ran, how many are running or failed, tokens, cost and time.
+- One row per subagent, under "Running" or "Finished", indented under the agent that started it. Each row has a pixel crab, the title, model, effort, agent type, steps, cost, time, context and tokens.
+
+## Using the panel
+
+- The panel opens when a session starts. `/mission-control` opens and closes it.
+- Finished and stopped runs fold to one line. The ▸ arrow unfolds them.
+- The ■ button stops a running subagent once its current request or tool call ends. The agent that started it reads that it was stopped. The button exists only in the desktop app.
+- The terminal shows the same data as text.
 
 ## Install
-
-In Claude Code:
 
 ```text
 /plugin marketplace add davidbalivo/mission-control
 /plugin install mission-control@mission-control
 ```
 
-Then run `/reload-plugins`. The panel opens on its own; `/mission-control` opens and closes it.
+Then run `/reload-plugins`.
 
 ## Cost is an estimate
 
-Claude Code reports tokens, not money. mission-control multiplies each kind of token (input, output, cache read, cache write) by a fixed price table in `hooks/register.tsx` (`PRICES`), taken from the [official pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on 2026-10-17. Fast mode, 1-hour cache writes and US-only inference are not priced, because the engine does not say when they apply.
+Claude Code reports tokens, not money. The panel multiplies them by the price table `PRICES` in `hooks/register.tsx`, copied from the [official pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on 2026-10-17. It does not price fast mode, 1-hour cache writes or US-only inference, because Claude Code does not say when they apply.
 
-## Tool for subagents
+## Step tool
 
-The mod registers one tool, `step`. A subagent reports its own steps with it (`done`, `total`, and an optional `note`). The panel draws the count and the blocks on its row; the note is not shown.
+Subagents report progress with the `step` tool, sending `done` and `total`. The panel draws it on the row as `3/5` and small blocks.
 
 ## Credits
 
-mission-control started as a fork of `savvy-progress` from [johnnyvizz/claude-kit](https://github.com/johnnyvizz/claude-kit) (MIT). The row layout, palette, header and pricing were reworked here.
+mission-control started as a fork of `savvy-progress` from [johnnyvizz/claude-kit](https://github.com/johnnyvizz/claude-kit) (MIT).
 
 ## License
 
