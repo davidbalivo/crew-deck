@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, SessionUsage } from 'claude-code'
+import type { EngineInterface, Register, RenderElement, SessionUsage } from 'claude-code'
 
 import type { AgentRun, AgentStatus, Env, Limit, Main, Panel } from '../types'
 
@@ -903,12 +903,30 @@ const STOP_ANSWER = 'Stopped by the person from the Crew Deck panel before finis
 const isStopRequested = async ($: EngineInterface, agentId: string): Promise<boolean> =>
   (await read($, agents)).some(a => a.agentId === agentId && a.isStopRequested === true)
 
-// A run's stop Button is keyed STOP_KEY + the run's id.
+// A run's stop Button is keyed STOP_KEY + the run's id, its fold arrow FOLD_KEY + the id.
 const STOP_KEY = 'stop-'
+const FOLD_KEY = 'fold-'
 
 // Marks a running run to stop; a run that already ended is left alone.
 const requestStop = ($: EngineInterface, id: string) =>
   update($, agents, rows => rows.map(x => (x.id === id && x.status === 'running' ? { ...x, isStopRequested: true } : x)))
+
+// Unfolds a finished run, or folds it back.
+const toggleRun = ($: EngineInterface, id: string) =>
+  update($, panel, prev => {
+    const open = prev.expanded ?? []
+    return { ...prev, expanded: open.includes(id) ? open.filter(x => x !== id) : [...open, id].slice(-200) }
+  })
+
+// The desktop's row Buttons, kept from one drawing to the next. The host
+// gives a Button a new handle for every new element, and drops the old handle
+// as soon as the next drawing is made. The page sends a click with the handle
+// it drew, so a click that lands after a redraw names a handle the host no
+// longer holds: the engine drops it before any `ui.press` hook runs. While
+// runs work the pane redraws several times a second, so most clicks on the
+// stop were lost. The same element, drawn again, keeps its handle.
+// Keyed by the Button's key; a new label (the fold arrow's ▸ / ▾) makes a new one.
+const keptButtons = new Map<string, { label: string; element: RenderElement }>()
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -960,13 +978,12 @@ export const register: Register = on => {
     return { text: isOpen ? S.opened : S.closed }
   })
 
-  // A press on a run's stop, taken by its key: the pane redraws up to ten times
-  // a second while runs work, and the host keeps a Button's own handler only
-  // for the drawing that made it, so a click that lands across a redraw may not
-  // reach it. The key reaches this hook either way.
+  // A press on a run's stop or fold arrow, taken here by its key: a kept
+  // Button's own handler holds the `$` of the drawing that first made it.
   on('ui.press', { plugin: 'crew-deck' }, async ($, e, next) => {
-    if (!e.element.startsWith(STOP_KEY)) return next(e)
-    await requestStop($, e.element.slice(STOP_KEY.length))
+    if (e.element.startsWith(STOP_KEY)) await requestStop($, e.element.slice(STOP_KEY.length))
+    else if (e.element.startsWith(FOLD_KEY)) await toggleRun($, e.element.slice(FOLD_KEY.length))
+    else return next(e)
     return { element: e.element }
   })
 
@@ -1150,13 +1167,6 @@ export const register: Register = on => {
         onPress={() => update($, panel, prev => ({ ...prev, isCompact: !prev.isCompact }))}
       />
     )
-    // A run that ended well folds itself; its arrow unfolds it. An SVG
-    // takes no press, so the arrow is a one-glyph Button beside the row.
-    const toggleRun = (id: string) =>
-      update($, panel, prev => {
-        const open = prev.expanded ?? []
-        return { ...prev, expanded: open.includes(id) ? open.filter(x => x !== id) : [...open, id].slice(-200) }
-      })
     const toggleDone = (
       <Button
         key="done"
@@ -1177,12 +1187,22 @@ export const register: Register = on => {
       // Finished always shows. A run still working or finished has a Button in
       // the slot right of its drawing: the stop, or the fold arrow; the others
       // draw their status mark there.
+      // The row Buttons this drawing holds, kept for the next one (keptButtons).
+      const drawnKeys = new Set<string>()
+      const kept = (key: string, label: string, onPress: () => void): RenderElement => {
+        drawnKeys.add(key)
+        const prev = keptButtons.get(key)
+        if (prev?.label === label) return prev.element
+        const element = <Button key={key} label={label} plain dimColor onPress={onPress} />
+        keptButtons.set(key, { label, element })
+        return element
+      }
       // One press of the stop stops the run. A run already stopping shows a
       // dim square that takes no press.
       const stopSlot = (a: AgentRun) => {
         if (a.isStopRequested) return <Text key={`${STOP_KEY}${a.id}`} dimColor>■</Text>
         // The `ui.press` hook takes the press first; this handler is the fallback.
-        return <Button key={`${STOP_KEY}${a.id}`} label="■" plain dimColor onPress={() => void requestStop($, a.id)} />
+        return kept(`${STOP_KEY}${a.id}`, '■', () => void requestStop($, a.id))
       }
       const agentRow = (r: TreeRow) => {
         const isFold = isFolded(r.a, p)
@@ -1190,13 +1210,17 @@ export const register: Register = on => {
         return (
           <Box key={r.a.id} flexDirection="row" alignItems="center" hover={isFoldable(r.a) ? { backgroundColor: ROW_HOVER } : undefined}>
             {art}
-            {isFoldable(r.a) && (
-              <Button key={`fold-${r.a.id}`} label={isFold ? '▸' : '▾'} plain dimColor onPress={() => void toggleRun(r.a.id)} />
-            )}
+            {/* A run that ended well folds itself; its arrow unfolds it. An SVG
+                takes no press, so the arrow is a one-glyph Button beside the row. */}
+            {isFoldable(r.a) && kept(`${FOLD_KEY}${r.a.id}`, isFold ? '▸' : '▾', () => void toggleRun($, r.a.id))}
             {r.a.status === 'running' && stopSlot(r.a)}
           </Box>
         )
       }
+      const runningEls = runningRows.map(agentRow)
+      const finishedEls = finishedRows.map(agentRow)
+      // Buttons no longer drawn are let go.
+      for (const key of keptButtons.keys()) if (!drawnKeys.has(key)) keptButtons.delete(key)
       return (
         <Box flexDirection="column">
           <Svg
@@ -1218,14 +1242,14 @@ export const register: Register = on => {
               {section('h-run-text', `${S.running} · ${runningCount}`)}
             </Box>
           )}
-          {runningRows.map(agentRow)}
+          {runningEls}
           {finishedRows.length > 0 && (
             // Air above Finished, so it reads as its own group.
             <Box key="h-done" marginTop={1}>
               {section('h-done-text', `${S.finished} · ${finishedRows.length}`)}
             </Box>
           )}
-          {finishedRows.map(agentRow)}
+          {finishedEls}
         </Box>
       )
     }
