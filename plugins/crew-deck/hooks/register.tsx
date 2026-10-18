@@ -598,10 +598,12 @@ ${svgText(c1, yLab, 11, 'mk', S.tokens, END)}${svgText(c2, yLab, 11, 'mk', S.cos
   )
 }
 
-// "No subagents yet" in 11 px and the `.mk` grey of `ctx`, `in` and `out`.
-const EMPTY_H = 18
-const emptySvg = (W: number, text: string): string =>
-  svg(W, EMPTY_H, `<text class="mk" x="0" y="13" font-family="${FONT}" font-size="11">${xml(text)}</text>`)
+// A line of the list in 11 px and the `.mk` grey of `ctx`, `in` and `out`:
+// "No subagents yet", and the "Running · n" and "Finished · n" labels. Drawn,
+// not a dim Text, so the grey is ours and not the surface's.
+const NOTE_H = 18
+const noteSvg = (W: number, text: string): string =>
+  svg(W, NOTE_H, `<text class="mk" x="0" y="13" font-family="${FONT}" font-size="11">${xml(text)}</text>`)
 
 // The task's own progress when the worker reports steps; a finished run is full.
 const progressOf = (a: AgentRun): number | null => {
@@ -1116,11 +1118,7 @@ export const register: Register = on => {
     if (e.surface === 'desktop' && 'Svg' in ui) {
       const { Svg } = ui
       const W = Math.max(240, Math.min(900, (e.props.bodyColumns || 40) * 8 - 8))
-      const section = (key: string, text: string) => (
-        <Text key={key} dimColor>
-          {text}
-        </Text>
-      )
+      const section = (key: string, text: string) => <Svg key={key} source={noteSvg(W, text)} alt={text} width={W} height={NOTE_H} />
 
       // The desktop panel never collapses: no Collapse button, and
       // Finished always shows. A finished run's drawing is narrower by the
@@ -1149,7 +1147,7 @@ export const register: Register = on => {
           {isEmpty && (
             // The empty state takes the same air as the sections and the labels' grey.
             <Box key="empty" marginTop={1}>
-              <Svg source={emptySvg(W, S.empty)} alt={S.empty} width={W} height={EMPTY_H} />
+              <Svg source={noteSvg(W, S.empty)} alt={S.empty} width={W} height={NOTE_H} />
             </Box>
           )}
           {runningRows.length > 0 && (
