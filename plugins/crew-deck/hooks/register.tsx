@@ -695,7 +695,7 @@ const stepBlocks = (x: number, base: number, done: number, total: number): [stri
 // A row knows its place in the tree of spawns. Subagents draw smaller,
 // indented under the run that spawned them, joined to it by tree lines.
 // The "two densities" layout. In full, the left block (title; type,
-// model and effort; steps and note) faces the metrics table (cost, time; context;
+// model and effort; steps) faces the metrics table (cost, time; context;
 // total, sent and generated tokens). Folded, the title faces cost and time.
 const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold = false): string => {
   const { a } = row
@@ -814,12 +814,8 @@ ${mark}${groupEnd}`,
     if (typeText) line3 += text(x0, l3, 11, 'mk', xml(typeText))
     line3 += text(x, l3, 11, 't', count, ' font-weight="600"')
     x += textWidth(count, 11) + 6
-    if (x + bw <= x0 + leftW) {
-      line3 += stepBlocks(x, l3, done, total)[0]
-      x += bw + 8
-    }
-    const noteW = x0 + leftW - x
-    if (a.stepNote && noteW > 40) line3 += text(x, l3, 11, 's', xml(fitText(a.stepNote, 11, noteW)))
+    // The count and its blocks alone: the step's note made the line too long.
+    if (x + bw <= x0 + leftW) line3 += stepBlocks(x, l3, done, total)[0]
   } else {
     line3 = text(x0, l3, 11, 'mk', xml(fitText(a.type, 11, leftW)))
   }
@@ -1248,7 +1244,7 @@ export const register: Register = on => {
       const ctx = ctxOf(a)
       const progress = progressOf(a)
       const model = a.effort ? `${modelName(a.model)} · ${a.effort}` : modelName(a.model)
-      const steps = a.stepTotal ? `${a.stepDone ?? 0}/${a.stepTotal}${a.stepNote ? ' ' + a.stepNote : ''} · ` : ''
+      const steps = a.stepTotal ? `${a.stepDone ?? 0}/${a.stepTotal} · ` : ''
       return (
         <Box key={a.id} flexDirection="column" marginBottom={r.isGroupEnd ? 1 : 0}>
           <Box flexDirection="row" gap={1}>

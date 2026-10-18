@@ -36,7 +36,7 @@ Claude Code reports tokens, not money. crew-deck multiplies each kind of token (
 
 ## Tool for subagents
 
-The mod registers one tool, `step`. A subagent reports its own steps with it (`done`, `total`, a short note). The panel draws them as the blocks on its row.
+The mod registers one tool, `step`. A subagent reports its own steps with it (`done`, `total`, and an optional `note`). The panel draws the count and the blocks on its row; the note is not shown.
 
 ## Credits
 
