@@ -78,7 +78,7 @@ export type Main = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'crew-deck': {
+    'mission-control': {
       agents: AgentRun[]
       panel: Panel
       now: number

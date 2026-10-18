@@ -3,7 +3,7 @@ import type { RenderChildren, RenderElement } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 const PANE = {
-  title: 'Crew Deck',
+  title: 'Mission Control',
   isFocused: false,
   bodyColumns: 60,
   placement: 'dock',
@@ -46,7 +46,7 @@ const buttonOf = (node: RenderChildren, key: string): ButtonElement | undefined 
 const handleOf = (node: RenderChildren, key: string): number | undefined => buttonOf(node, key)?.press.handle
 
 const mountPane = ($: Engine) =>
-  $.ui.mount({ plugin: 'crew-deck', surface: 'desktop', component: 'Pane', requestId: 'crew-deck', props: PANE })
+  $.ui.mount({ plugin: 'mission-control', surface: 'desktop', component: 'Pane', requestId: 'mission-control', props: PANE })
 
 test('one press of the stop stops a running run', async ($, on) => {
   mock.clock(on)

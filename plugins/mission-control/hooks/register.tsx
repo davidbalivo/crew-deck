@@ -3,17 +3,17 @@ import type { EngineInterface, Register, RenderElement, SessionUsage } from 'cla
 
 import type { AgentRun, AgentStatus, Env, Limit, Main, Panel } from '../types'
 
-const agents = atom({ plugin: 'crew-deck', key: 'agents' } as const, [])
-const panel = atom({ plugin: 'crew-deck', key: 'panel' } as const, {
+const agents = atom({ plugin: 'mission-control', key: 'agents' } as const, [])
+const panel = atom({ plugin: 'mission-control', key: 'panel' } as const, {
   isCompact: false,
   isDoneCollapsed: false,
   expanded: [],
 })
-const now = atom({ plugin: 'crew-deck', key: 'now' } as const, 0)
+const now = atom({ plugin: 'mission-control', key: 'now' } as const, 0)
 // Where the session works (folder, its parent, git branch), for the header.
-const env = atom({ plugin: 'crew-deck', key: 'env' } as const, { folder: '', path: '' } as Env)
+const env = atom({ plugin: 'mission-control', key: 'env' } as const, { folder: '', path: '' } as Env)
 // The main thread's model, context and own usage, for its section.
-const main = atom({ plugin: 'crew-deck', key: 'main' } as const, {
+const main = atom({ plugin: 'mission-control', key: 'main' } as const, {
   tokens: 0,
   inputTokens: 0,
   outputTokens: 0,
@@ -21,14 +21,14 @@ const main = atom({ plugin: 'crew-deck', key: 'main' } as const, {
   limits: [],
 })
 
-const STEP_TOOL = 'mcp__crew-deck__step'
-const PANE = 'crew-deck'
+const STEP_TOOL = 'mcp__mission-control__step'
+const PANE = 'mission-control'
 
 // ---------------------------------------------------------------------------
 // The panel's words.
 
 const S = {
-  pane: 'Crew Deck',
+  pane: 'Mission Control',
   repo: 'Repo',
   mainThread: 'Main thread',
   subagents: 'Subagents',
@@ -354,7 +354,7 @@ const stateOf = (a: AgentRun): string =>
 const svg = (W: number, H: number, body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${PANE_CSS}${CRAB_CSS}${body}</svg>`
 
-// The pane's own title says "Crew Deck". The header has two bands. Above, the
+// The pane's own title says "Mission Control". The header has two bands. Above, the
 // folder, its parent path and the git branch in a pill; below, context, tokens,
 // cost and time, each value under its label, the last three on the agent rows'
 // metric columns. Only the cost and the context carry color and weight.
@@ -912,7 +912,7 @@ const measured = (prev: Main, u: Pick<SessionUsage, 'context' | 'rateLimits'>): 
 })
 
 // What a run stopped from the panel answers to the agent that spawned it.
-const STOP_ANSWER = 'Stopped by the person from the Crew Deck panel before finishing.'
+const STOP_ANSWER = 'Stopped by the person from the Mission Control panel before finishing.'
 
 const isStopRequested = async ($: EngineInterface, agentId: string): Promise<boolean> =>
   (await read($, agents)).some(a => a.agentId === agentId && a.isStopRequested === true)
@@ -953,7 +953,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'step',
       description:
-        'For subagents: report progress on your own task to the Crew Deck panel. ' +
+        'For subagents: report progress on your own task to the Mission Control panel. ' +
         'Right after reading the brief, call it with `total` (your plan in 3-8 steps) and `done: 0`; ' +
         'call it again as each step finishes. Cheap and silent: it only draws a bar.',
       inputSchema: {
@@ -967,8 +967,8 @@ export const register: Register = on => {
       },
     })
     await $.command.register({
-      name: 'crew-deck',
-      description: 'Show or hide Crew Deck: the session and its subagents, with model, context, cost and time',
+      name: 'mission-control',
+      description: 'Show or hide Mission Control: the session and its subagents, with model, context, cost and time',
     })
 
     // Ticks the running agents' clocks; quiet when nothing runs.
@@ -987,14 +987,14 @@ export const register: Register = on => {
     return started
   })
 
-  on('command.run', { command: 'crew-deck' }, async $ => {
+  on('command.run', { command: 'mission-control' }, async $ => {
     const isOpen = await togglePane($)
     return { text: isOpen ? S.opened : S.closed }
   })
 
   // A press on a run's stop or fold arrow, taken here by its key: a kept
   // Button's own handler holds the `$` of the drawing that first made it.
-  on('ui.press', { plugin: 'crew-deck' }, async ($, e, next) => {
+  on('ui.press', { plugin: 'mission-control' }, async ($, e, next) => {
     if (e.element.startsWith(STOP_KEY)) await requestStop($, e.element.slice(STOP_KEY.length))
     else if (e.element.startsWith(FOLD_KEY)) await toggleRun($, e.element.slice(FOLD_KEY.length))
     else return next(e)

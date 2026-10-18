@@ -1,4 +1,4 @@
-# crew-deck
+# mission-control
 
 A Claude Code mod for the desktop app: a side panel with your session at the top and every subagent below it, live.
 
@@ -24,15 +24,15 @@ A Claude Code mod for the desktop app: a side panel with your session at the top
 In Claude Code:
 
 ```text
-/plugin marketplace add davidbalivo/crew-deck
-/plugin install crew-deck@crew-deck
+/plugin marketplace add davidbalivo/mission-control
+/plugin install mission-control@mission-control
 ```
 
-Then run `/reload-plugins`. The panel opens on its own; `/crew-deck` opens and closes it.
+Then run `/reload-plugins`. The panel opens on its own; `/mission-control` opens and closes it.
 
 ## Cost is an estimate
 
-Claude Code reports tokens, not money. crew-deck multiplies each kind of token (input, output, cache read, cache write) by a fixed price table in `hooks/register.tsx` (`PRICES`), taken from the [official pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on 2026-10-17. Fast mode, 1-hour cache writes and US-only inference are not priced, because the engine does not say when they apply.
+Claude Code reports tokens, not money. mission-control multiplies each kind of token (input, output, cache read, cache write) by a fixed price table in `hooks/register.tsx` (`PRICES`), taken from the [official pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on 2026-10-17. Fast mode, 1-hour cache writes and US-only inference are not priced, because the engine does not say when they apply.
 
 ## Tool for subagents
 
@@ -40,7 +40,7 @@ The mod registers one tool, `step`. A subagent reports its own steps with it (`d
 
 ## Credits
 
-crew-deck started as a fork of `savvy-progress` from [johnnyvizz/claude-kit](https://github.com/johnnyvizz/claude-kit) (MIT). The row layout, palette, header and pricing were reworked here.
+mission-control started as a fork of `savvy-progress` from [johnnyvizz/claude-kit](https://github.com/johnnyvizz/claude-kit) (MIT). The row layout, palette, header and pricing were reworked here.
 
 ## License
 
