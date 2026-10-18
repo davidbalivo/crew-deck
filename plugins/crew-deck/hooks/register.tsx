@@ -336,10 +336,10 @@ const crab = (x: number, y: number, costume: Costume, isWalking: boolean, scale:
   return `<g transform="translate(${x},${y}) scale(${scale})" shape-rendering="crispEdges"><g class="c-${costume}${isWalking ? ' run' : ''}">${body}${group('la')}${group('lb')}</g></g>`
 }
 
-const statusMark = (x: number, y: number, status: AgentStatus): string => {
-  // Running is a pulsing clay dot, done a grey check, failed a red cross.
+// A finished run shows its fold arrow instead, so only these two have a mark.
+const statusMark = (x: number, y: number, status: Exclude<AgentStatus, 'done'>): string => {
+  // Running is a pulsing clay dot, failed a red cross.
   if (status === 'running') return `<circle class="live cR" cx="${x}" cy="${y}" r="3"/>`
-  if (status === 'done') return `<path class="sM" d="M${x - 4} ${y}l2.8 2.8 5.2-5.6" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`
   return `<path class="sF" d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke-width="1.8" stroke-linecap="round"/>`
 }
 
@@ -448,8 +448,8 @@ const spaced = (groups: Figure[][], maxW: number, y: number, size = SIZE): strin
 // cost and time edges: the context percentage over one limit, the context
 // tokens over the other. Everything ends on the time column.
 const PAD = 12
-// A function, not a constant: ARROW_W is declared further down.
-const cardInset = (): number => (ARROW_W + 24 - PAD) / 2
+// A function, not a constant: ARROW_W and ROW_GAP are declared further down.
+const cardInset = (): number => (ARROW_W + ROW_GAP - PAD) / 2
 const CARD_R = 8
 const TITLE_GAP = 25
 const SECTION_GAP = 44
@@ -470,7 +470,7 @@ const SIZE = 12
 const SIZE_KEY = 13
 
 const headerSvg = (W: number, where: Env, m: Main): string => {
-  const [, c2, c3] = metricEdges(W - ARROW_W - 24)
+  const [, c2, c3] = rowEdges(W)
   const cx = cardInset()
   // The card's right edge, cx from the panel's, as on the left.
   const cardW = W - cx
@@ -556,13 +556,13 @@ ${limits}`,
 const SUB_TITLE = Y_ROW2 + SECTION_GAP - HEADER_H
 const LABELS_DROP = 19
 const labelsDrop = (W: number): number => {
-  const [c1] = metricEdges(W - ARROW_W - 24)
+  const [c1] = rowEdges(W)
   return cardInset() + PAD + titleWidth(S.subagents) + 24 <= c1 - textWidth(S.tokens, 11) ? 0 : LABELS_DROP
 }
 const cardBottom = (W: number): number => SUB_TITLE + labelsDrop(W) + TITLE_GAP + CARD_PAD_BOTTOM
 const subagentsHeight = (W: number): number => cardBottom(W) + CARD_GAP_BELOW
 const subagentsSvg = (W: number, t: ReturnType<typeof totals>, list: readonly AgentRun[]): string => {
-  const [c1, c2, c3] = metricEdges(W - ARROW_W - 24)
+  const [c1, c2, c3] = rowEdges(W)
   const H = subagentsHeight(W)
   const bottom = cardBottom(W)
   const yLab = SUB_TITLE + labelsDrop(W)
@@ -638,8 +638,13 @@ const crabTop = (H: number, sc: number): number => Math.round(H / 2 - 18 * sc)
 // The metrics form a borderless table of three right-aligned columns, the same
 // widths on every row, so cost, time and tokens line up down the whole list.
 const COL_GAP = 20
-// Room kept right of each desktop row for its fold arrow.
+// The slot right of each desktop row's time column: a finished run's fold
+// arrow, or the status mark of a run still working or failed. ROW_GAP keeps it
+// clear of the time column.
 const ARROW_W = 20
+const ROW_GAP = 8
+// The metric columns of the rows, and of the header above them, from the pane's width.
+const rowEdges = (W: number): [number, number, number] => metricEdges(W - ARROW_W - ROW_GAP)
 // A foldable row lights while hovered. A translucent grey reads on
 // both themes; no theme key paints a background.
 const ROW_HOVER = 'rgba(128,128,128,0.08)'
@@ -690,8 +695,9 @@ const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold =
   const { H, scale: sc } = g
   const crabY = crabTop(H, sc)
   const x0 = ind + g.textX
-  const RX = W - 24
-  const [c1, c2, c3] = metricEdges(RX)
+  const [c1, c2, c3] = rowEdges(W)
+  // A finished run leaves the slot to its fold arrow, a Button beside the drawing.
+  const svgW = a.status === 'done' ? W - ARROW_W : W
   const crabBottom = crabY + Math.round(28 * sc)
 
   // Tree lines: ancestors with later siblings keep their rail; this row's own
@@ -719,15 +725,15 @@ const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold =
   const cost = fmtCost(a.costUsd)
   const time = fmtTime(elapsed(a, at))
   const crabSvg = `<g class="b${bodyIdx}">${crab(ind, crabY, costumeOf(a.type), a.status === 'running', sc)}</g>`
-  const groupEnd = row.isGroupEnd ? `<line class="ln" x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}"/>` : ''
-  const mark = statusMark(W - 8, Math.round(H / 2), a.status)
+  const groupEnd = row.isGroupEnd ? `<line class="ln" x1="0" y1="${H - 0.5}" x2="${W - ARROW_W}" y2="${H - 0.5}"/>` : ''
+  const mark = a.status === 'done' ? '' : statusMark(W - ARROW_W / 2, Math.round(H / 2), a.status)
 
   if (isFold) {
     const [y] = baselines(H, 1, 0)
     const size = isSub ? 11 : 12
     const titleW = Math.max(0, c2 - METRIC_COLS[1] - x0 - 12)
     return svg(
-      W,
+      svgW,
       H,
       `${lines.join('')}${crabSvg}
 ${text(x0, y ?? 0, size, 's', xml(fitText(a.description || a.type, size, titleW)), ' font-weight="500"')}
@@ -796,7 +802,7 @@ ${mark}${groupEnd}`,
   }
 
   return svg(
-    W,
+    svgW,
     H,
     `${lines.join('')}${crabSvg}
 ${text(x0, l1, titleSize, 't', xml(fitText(a.description || a.type, titleSize, titleW)), ' font-weight="600"')}
@@ -1117,11 +1123,11 @@ export const register: Register = on => {
       )
 
       // The desktop panel never collapses: no Collapse button, and
-      // Finished always shows. Each row is narrower by the arrow's slot.
-      const rowW = W - ARROW_W
+      // Finished always shows. A finished run's drawing is narrower by the
+      // arrow's slot; the others draw their status mark in it.
       const agentRow = (r: TreeRow, state: string) => {
         const isFold = isFolded(r.a, p)
-        const art = <Svg source={agentSvg(rowW, r, at, bodyIndexOf(list, r.a), isFold)} alt={altOf(r, state)} width={rowW} height={rowHeight(r, isFold)} />
+        const art = <Svg source={agentSvg(W, r, at, bodyIndexOf(list, r.a), isFold)} alt={altOf(r, state)} width={r.a.status === 'done' ? W - ARROW_W : W} height={rowHeight(r, isFold)} />
         return (
           <Box key={r.a.id} flexDirection="row" alignItems="center" hover={r.a.status === 'done' ? { backgroundColor: ROW_HOVER } : undefined}>
             {art}
