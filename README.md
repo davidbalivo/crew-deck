@@ -16,7 +16,7 @@ A Claude Code mod for the desktop app: a side panel with your session at the top
   - Title, model and effort, agent type, and the steps it reports (`3/5` plus small blocks).
   - A borderless table on the right: cost and time, context (`ctx 9% 88k`), and tokens (`307k in 304k out 2k`). Its columns line up with the header and down the whole list.
 - Runs that end well fold to one line. The arrow on the right unfolds them, and foldable rows light up on hover.
-- A running subagent has a stop (■) on the right, on the desktop. The first press arms it for 4 seconds and the row asks for a second press; the second press stops the run. It stops once its current model request or tool call ends: it asks the model for nothing more, its next tool calls are refused, and the agent that spawned it reads that it was stopped. The row then shows a grey square and "stopped".
+- A running subagent has a stop (■) on the right, on the desktop. One press stops it once its current model request or tool call ends: it asks the model for nothing more, its next tool calls are refused, and the agent that spawned it reads that it was stopped. The row then says "stopped" and folds like a finished run.
 - In the terminal the same content is drawn as text rows.
 
 ## Install

@@ -28,23 +28,15 @@ const spawnRun = async ($: Engine): Promise<void> => {
 const mountPane = ($: Engine) =>
   $.ui.mount({ plugin: 'crew-deck', surface: 'desktop', component: 'Pane', requestId: 'crew-deck', props: PANE })
 
-test('a running run stops on the second press of its stop, not the first', async ($, on) => {
+test('one press of the stop stops a running run', async ($, on) => {
   mock.clock(on)
   on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
   await spawnRun($)
   const ui = await mountPane($)
 
-  const atRest = await ui.find({ key: 'stop-a1' })
-  expect(atRest?.type).toBe('Button')
-  expect(atRest?.props.dimColor).toBe(true)
-
+  expect((await ui.find({ key: 'stop-a1' }))?.type).toBe('Button')
   await ui.press({ key: 'stop-a1' })
-  // Armed, not yet stopped: still a Button, now at full strength.
-  const armed = await ui.find({ key: 'stop-a1' })
-  expect(armed?.type).toBe('Button')
-  expect(armed?.props.dimColor).toBeFalsy()
 
-  await ui.press({ key: 'stop-a1' })
   // Stopping: no Button left in the slot, and the row says so.
   expect((await ui.find({ key: 'stop-a1' }))?.type).not.toBe('Button')
   const rows = await ui.findAll({ type: 'Svg' })

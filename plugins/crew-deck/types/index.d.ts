@@ -36,8 +36,6 @@ export type Panel = {
   isDoneCollapsed: boolean
   /** Ids of runs that ended well, unfolded by their arrow. Absent in state saved before this field existed. */
   expanded?: string[]
-  /** The run whose stop was pressed once, and when; a second press within ARM_MS stops it. */
-  armedStop?: { id: string; at: number }
 }
 
 /** Where the session works, for the header. */

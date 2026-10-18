@@ -49,7 +49,6 @@ const S = {
   isFailed: 'failed',
   isStopped: 'stopped',
   stopping: 'stopping',
-  confirmStop: 'press ■ again to stop',
   agent: 'agent',
   agents: 'agents',
   opened: 'opened',
@@ -698,7 +697,7 @@ const stepBlocks = (x: number, base: number, done: number, total: number): [stri
 // The "two densities" layout. In full, the left block (title; type,
 // model and effort; steps and note) faces the metrics table (cost, time; context;
 // total, sent and generated tokens). Folded, the title faces cost and time.
-const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold = false, isArmed = false): string => {
+const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold = false): string => {
   const { a } = row
   const d = Math.min(row.depth, MAX_DEPTH)
   const isSub = d > 0
@@ -796,8 +795,6 @@ ${mark}${groupEnd}`,
         ? [` · ${S.isStopped}`, 'm']
         : a.isStopRequested
           ? [` · ${S.stopping}…`, 'm']
-          : isArmed
-            ? [` · ${S.confirmStop}`, 'cF']
           : ['', '']
   const metaRich =
     xml(fitText(meta.join(' · '), 11, Math.max(0, metaW - textWidth(tail, 11)))) + (tail ? `<tspan class="${tailCls}" font-weight="600">${xml(tail)}</tspan>` : '')
@@ -903,9 +900,8 @@ const measured = (prev: Main, u: Pick<SessionUsage, 'context' | 'rateLimits'>): 
   limits: u.rateLimits.map(r => ({ kind: r.kind, pct: r.percentUsed })),
 })
 
-// The stop: what a stopped run answers, how long a first press stays armed.
+// What a run stopped from the panel answers to the agent that spawned it.
 const STOP_ANSWER = 'Stopped by the person from the Crew Deck panel before finishing.'
-const ARM_MS = 4000
 
 const isStopRequested = async ($: EngineInterface, agentId: string): Promise<boolean> =>
   (await read($, agents)).some(a => a.agentId === agentId && a.isStopRequested === true)
@@ -1167,35 +1163,16 @@ export const register: Register = on => {
       // Finished always shows. A run still working or finished has a Button in
       // the slot right of its drawing: the stop, or the fold arrow; the others
       // draw their status mark there.
-      // The stop takes two presses: the first arms it for ARM_MS (the square at
-      // full strength, the row asking for a second press in red), the second
-      // stops the run. A Button takes a label only, no colored child. A run
-      // already stopping shows a dim square that takes no press.
-      const isArmed = (a: AgentRun): boolean => p.armedStop?.id === a.id && at - p.armedStop.at < ARM_MS
+      // One press of the stop stops the run. A run already stopping shows a
+      // dim square that takes no press.
       const stopSlot = (a: AgentRun) => {
         if (a.isStopRequested) return <Text key={`stop-${a.id}`} dimColor>■</Text>
-        if (isArmed(a)) {
-          const stop = () =>
-            Promise.all([
-              update($, agents, rows => rows.map(x => (x.id === a.id ? { ...x, isStopRequested: true } : x))),
-              update($, panel, prev => ({ ...prev, armedStop: undefined })),
-            ])
-          return (
-<Button key={`stop-${a.id}`} label="■" plain onPress={() => void stop()} />
-          )
-        }
-        const arm = async () => {
-          const armedAt = await $.clock.now()
-          await update($, now, () => armedAt)
-          await update($, panel, prev => ({ ...prev, armedStop: { id: a.id, at: armedAt } }))
-        }
-        return (
-<Button key={`stop-${a.id}`} label="■" plain dimColor onPress={() => void arm()} />
-        )
+        const stop = () => update($, agents, rows => rows.map(x => (x.id === a.id ? { ...x, isStopRequested: true } : x)))
+        return <Button key={`stop-${a.id}`} label="■" plain dimColor onPress={() => void stop()} />
       }
       const agentRow = (r: TreeRow) => {
         const isFold = isFolded(r.a, p)
-        const art = <Svg source={agentSvg(W, r, at, bodyIndexOf(list, r.a), isFold, isArmed(r.a))} alt={altOf(r, stateOf(r.a))} width={hasSlotButton(r.a) ? W - ARROW_W : W} height={rowHeight(r, isFold)} />
+        const art = <Svg source={agentSvg(W, r, at, bodyIndexOf(list, r.a), isFold)} alt={altOf(r, stateOf(r.a))} width={hasSlotButton(r.a) ? W - ARROW_W : W} height={rowHeight(r, isFold)} />
         return (
           <Box key={r.a.id} flexDirection="row" alignItems="center" hover={isFoldable(r.a) ? { backgroundColor: ROW_HOVER } : undefined}>
             {art}
