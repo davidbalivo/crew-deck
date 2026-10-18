@@ -27,19 +27,32 @@ const spawnRun = async ($: Engine): Promise<void> => {
 }
 
 type ButtonElement = Extract<RenderElement, { type: 'Button' }>
+type BoxElement = Extract<RenderElement, { type: 'Box' }>
 
-// The Button under `key`, as the page gets it.
-const buttonOf = (node: RenderChildren, key: string): ButtonElement | undefined => {
+// The element under `key`, as the page gets it.
+const elementOf = (node: RenderChildren, key: string): RenderElement | undefined => {
   if (Array.isArray(node)) {
     for (const child of node) {
-      const b = buttonOf(child, key)
-      if (b !== undefined) return b
+      const el = elementOf(child, key)
+      if (el !== undefined) return el
     }
     return undefined
   }
   if (typeof node !== 'object' || node === null || !('type' in node)) return undefined
-  if (node.type === 'Button' && node.props.key === key) return node
-  return 'children' in node ? buttonOf(node.children, key) : undefined
+  if (node.props.key === key) return node
+  return 'children' in node ? elementOf(node.children, key) : undefined
+}
+
+// The Button under `key`, as the page gets it.
+const buttonOf = (node: RenderChildren, key: string): ButtonElement | undefined => {
+  const el = elementOf(node, key)
+  return el?.type === 'Button' ? el : undefined
+}
+
+// The Box under `key`, as the page gets it.
+const boxOf = (node: RenderChildren, key: string): BoxElement | undefined => {
+  const el = elementOf(node, key)
+  return el?.type === 'Box' ? el : undefined
 }
 
 // The handle the host holds for the Button under `key`.
@@ -57,8 +70,8 @@ test('one press of the stop stops a running run', async ($, on) => {
   expect((await ui.find({ key: 'stop-a1' }))?.type).toBe('Button')
   await ui.press({ key: 'stop-a1' })
 
-  // Stopping: no Button left in the slot, and the row says so.
-  expect((await ui.find({ key: 'stop-a1' }))?.type).not.toBe('Button')
+  // Stopping: the same Button stays in the slot, and the row says so.
+  expect((await ui.find({ key: 'stop-a1' }))?.type).toBe('Button')
   const rows = await ui.findAll({ type: 'Svg' })
   expect(rows.some(r => String(r.props.alt).includes('Map the code') && String(r.props.alt).includes('stopping'))).toBe(true)
 
@@ -92,7 +105,8 @@ test('the stop keeps its handle while the pane redraws', async ($, on) => {
   expect(handleOf(await ui.drawn(), 'stop-a1')).toBe(first)
 
   await ui.press({ key: 'stop-a1' })
-  expect((await ui.find({ key: 'stop-a1' }))?.type).not.toBe('Button')
+  // Stopping keeps the same Button, so the square does not move.
+  expect(handleOf(await ui.drawn(), 'stop-a1')).toBe(first)
 
   await ui.unmount()
 })
@@ -106,6 +120,20 @@ test('the stop keeps its resting look under the pointer', async ($, on) => {
   const ui = await mountPane($)
 
   expect(buttonOf(await ui.drawn(), 'stop-a1')?.hover).toEqual({ dimColor: true, backgroundColor: 'rgba(0,0,0,0)' })
+
+  await ui.unmount()
+})
+
+// The Box around the stop lights instead: a Box has no fade to flash.
+test('the stop slot lights while running and not once stopping', async ($, on) => {
+  mock.clock(on)
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await spawnRun($)
+  const ui = await mountPane($)
+
+  expect(boxOf(await ui.drawn(), 'slot-a1')?.hover).toEqual({ backgroundColor: 'rgba(128,128,128,0.2)' })
+  await ui.press({ key: 'stop-a1' })
+  expect(boxOf(await ui.drawn(), 'slot-a1')?.hover).toBeUndefined()
 
   await ui.unmount()
 })

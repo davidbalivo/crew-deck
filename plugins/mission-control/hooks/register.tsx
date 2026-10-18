@@ -665,6 +665,10 @@ const ROW_HOVER = 'rgba(128,128,128,0.08)'
 // hover look and faded back in: a flash. With the same look either way, a new
 // drawing has nothing to fade. Needs the row's keyed Box.
 const SLOT_HOVER = { dimColor: true, backgroundColor: 'rgba(0,0,0,0)' } as const
+// The stop's slot lights while hovered, on the keyed Box around its Button. A
+// Box draws as a page node with no fade, so its hover comes back at once on a
+// new drawing; the Button's eases in, hence SLOT_HOVER. Darker than ROW_HOVER.
+const STOP_HOVER = 'rgba(128,128,128,0.2)'
 // Widths also fit the header's 14 px bold totals (bold runs ~6% wider).
 const HEADER_BOLD = 1.06
 const METRIC_COLS: [number, number, number] = [
@@ -917,9 +921,11 @@ const STOP_ANSWER = 'Stopped by the person from the Mission Control panel before
 const isStopRequested = async ($: EngineInterface, agentId: string): Promise<boolean> =>
   (await read($, agents)).some(a => a.agentId === agentId && a.isStopRequested === true)
 
-// A run's stop Button is keyed STOP_KEY + the run's id, its fold arrow FOLD_KEY + the id.
+// A run's stop Button is keyed STOP_KEY + the run's id, its fold arrow FOLD_KEY + the id,
+// and the Box that holds either SLOT_KEY + the id.
 const STOP_KEY = 'stop-'
 const FOLD_KEY = 'fold-'
+const SLOT_KEY = 'slot-'
 
 // Marks a running run to stop; a run that already ended is left alone.
 const requestStop = ($: EngineInterface, id: string) =>
@@ -1211,13 +1217,18 @@ export const register: Register = on => {
         keptButtons.set(key, { label, element })
         return element
       }
-      // One press of the stop stops the run. A run already stopping shows a
-      // dim square that takes no press.
-      const stopSlot = (a: AgentRun) => {
-        if (a.isStopRequested) return <Text key={`${STOP_KEY}${a.id}`} dimColor>■</Text>
-        // The `ui.press` hook takes the press first; this handler is the fallback.
-        return kept(`${STOP_KEY}${a.id}`, '■', () => void requestStop($, a.id))
-      }
+      // The slot's keyed Box: the stop and the fold arrow sit at the same place.
+      const slot = (id: string, button: RenderElement, hover?: { backgroundColor: string }) => (
+        <Box key={`${SLOT_KEY}${id}`} hover={hover}>
+          {button}
+        </Box>
+      )
+      // One press of the stop stops the run. A run already stopping keeps the
+      // same Button, so the square does not move; it no longer lights, and a
+      // second press changes nothing.
+      // The `ui.press` hook takes the press first; this handler is the fallback.
+      const stopSlot = (a: AgentRun) =>
+        slot(a.id, kept(`${STOP_KEY}${a.id}`, '■', () => void requestStop($, a.id)), a.isStopRequested ? undefined : { backgroundColor: STOP_HOVER })
       const agentRow = (r: TreeRow) => {
         const isFold = isFolded(r.a, p)
         const art = <Svg source={agentSvg(W, r, at, bodyIndexOf(list, r.a), isFold)} alt={altOf(r, stateOf(r.a))} width={hasSlotButton(r.a) ? W - ARROW_W : W} height={rowHeight(r, isFold)} />
@@ -1226,7 +1237,7 @@ export const register: Register = on => {
             {art}
             {/* A run that ended well folds itself; its arrow unfolds it. An SVG
                 takes no press, so the arrow is a one-glyph Button beside the row. */}
-            {isFoldable(r.a) && kept(`${FOLD_KEY}${r.a.id}`, isFold ? '▸' : '▾', () => void toggleRun($, r.a.id))}
+            {isFoldable(r.a) && slot(r.a.id, kept(`${FOLD_KEY}${r.a.id}`, isFold ? '▸' : '▾', () => void toggleRun($, r.a.id)))}
             {r.a.status === 'running' && stopSlot(r.a)}
           </Box>
         )
