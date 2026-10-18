@@ -233,7 +233,7 @@ const familiesOf = (list: AgentRun[]): Family[] => {
 // grey text in three steps, one hue per state, every color with a dark variant.
 // Text passes 4.5:1 and marks 3:1 on #FFFFFF / #1F1F1E. `.cR` running, `.cF`
 // failed, `.cG` `.cW` `.cO` `.cF` the header's context by level (green, amber,
-// orange, red), `.bf` an agent's body (`--b`).
+// orange, red), `.bf` an agent's body (`--b`), `.card` the usage card's soft fill.
 // Metrics: `.mvC` cost in a muted teal, the only colored figure on a row; time,
 // context and tokens in the grey `.ml`; the words `ctx`, `in`, `out` and the
 // agent type lighter still, `.mk`
@@ -250,10 +250,10 @@ const BODY_COLORS: [string, string][] = [
 ]
 const bodyCss = (i: 0 | 1): string => BODY_COLORS.map((c, n) => `.b${n}{--b:${c[i]}}`).join('')
 const PANE_CSS = `<style>
-.t{fill:#1F1F1E}.s{fill:#55544F}.m{fill:#73726D}.k{fill:#E6E5E1}.ln{stroke:#ECEBE7}.tile{fill:#F4F3F0}.tr{stroke:#D3D2CD;stroke-width:1.2;fill:none;stroke-linecap:round}
+.t{fill:#1F1F1E}.s{fill:#55544F}.m{fill:#73726D}.k{fill:#E6E5E1}.ln{stroke:#ECEBE7}.tile{fill:#F4F3F0}.card{fill:#F5F4F1}.tr{stroke:#D3D2CD;stroke-width:1.2;fill:none;stroke-linecap:round}
 .mvC{fill:#2B6A62}.ml{fill:#73726D}.mk{fill:#A3A29C}
 .cR{fill:#B5532F}.cF{fill:#C42B2B}.cW{fill:#9A5B00}.cG{fill:#2E7D52}.cO{fill:#B34E00}.sF{stroke:#C42B2B}.sM{stroke:#73726D}.bf{fill:var(--b)}${bodyCss(0)}
-@media (prefers-color-scheme: dark){.t{fill:#ECEBE8}.s{fill:#BDBCB6}.m{fill:#97968F}.k{fill:#3A3A37}.ln{stroke:#2E2E2C}.tile{fill:#262625}.tr{stroke:#4A4A47}
+@media (prefers-color-scheme: dark){.t{fill:#ECEBE8}.s{fill:#BDBCB6}.m{fill:#97968F}.k{fill:#3A3A37}.ln{stroke:#2E2E2C}.tile{fill:#262625}.card{fill:#2A2A28}.tr{stroke:#4A4A47}
 .mvC{fill:#8FC8BF}.ml{fill:#97968F}.mk{fill:#6C6B66}
 .cR{fill:#E08A6B}.cF{fill:#F2726B}.cW{fill:#E8A33D}.cG{fill:#5DBE8A}.cO{fill:#F08A4B}.sF{stroke:#F2726B}.sM{stroke:#97968F}${bodyCss(1)}}
 .live{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.35}}
@@ -397,8 +397,12 @@ const BOLD = ' font-weight="600"'
 // Bold runs ~6% wider than the estimate.
 const boldWidth = (s: string, size: number): number => textWidth(s, size) * HEADER_BOLD
 
-// A section's title: bold, in the lighter `ctx` grey.
-const sectionTitle = (y: number, title: string): string => svgText(0, y, 11, 'mk', xml(title), BOLD)
+// A section's title: 10 px capitals, tracked, bold, in the `.m` grey, so it
+// reads apart from the 11 px column labels.
+const TITLE_TRACKING = 0.8
+const sectionTitle = (x: number, y: number, title: string): string =>
+  svgText(x, y, 10, 'm', xml(title.toUpperCase()), `${BOLD} letter-spacing="${TITLE_TRACKING}"`)
+const titleWidth = (title: string): number => boldWidth(title.toUpperCase(), 10) + TITLE_TRACKING * title.length
 
 // One figure of a row: its width and its markup, drawn at a given x.
 type Figure = { w: number; body: string }
@@ -431,19 +435,28 @@ const spaced = (groups: Figure[][], maxW: number, y: number, size = SIZE): strin
   return out.join('')
 }
 
-// The header has three sections, each under a title in the `ctx` grey, its
-// content TITLE_GAP px lower, SECTION_GAP px from one section's last line to the next
-// title. The third, the subagents' sums, is a band of its own below.
-// Above, the repo: the folder, its parent path and the git branch in a pill.
-// Below, the main thread: two rows mirrored around the context bar. On the
-// left the model over the cost and tokens; on the right two columns that share
-// the agent rows' cost and time edges: the context percentage over one limit,
-// the context tokens over the other. Everything ends on the time column.
-const SECTION_GAP = 47
-const TITLE_GAP = 27
-const Y_REPO = 18
-const Y_ID = Y_REPO + TITLE_GAP
-const Y_TITLE = Y_ID + SECTION_GAP
+// The header: the repo on top, the session's usage in one card below.
+// Top line: the folder, its parent path and the git branch in a pill, with no
+// title. Below it a soft card holds the usage in two sections, Main thread and
+// Subagents, each under its title; the card starts in this SVG and ends in the
+// subagents' one, stacked right under it. Inside the card the left side is
+// inset by PAD; the right side keeps the agent rows' columns.
+// Main thread: two rows mirrored around the context bar. On the left the model
+// over the cost and tokens; on the right two columns that share the agent rows'
+// cost and time edges: the context percentage over one limit, the context
+// tokens over the other. Everything ends on the time column.
+const PAD = 12
+const CARD_R = 8
+const TITLE_GAP = 19
+const SECTION_GAP = 44
+const Y_ID = 22
+const CARD_TOP = 40
+// Air inside the card above its first title and below its last figures,
+// and below the card before the agent list.
+const CARD_PAD_TOP = 32
+const CARD_PAD_BOTTOM = 24
+const CARD_GAP_BELOW = 16
+const Y_TITLE = CARD_TOP + CARD_PAD_TOP
 const Y_ROW1 = Y_TITLE + TITLE_GAP
 const BAR_Y = Y_ROW1 + 9
 const BAR_H = 4
@@ -454,8 +467,10 @@ const SIZE_KEY = 13
 
 const headerSvg = (W: number, where: Env, m: Main): string => {
   const [, c2, c3] = metricEdges(W - ARROW_W - 24)
+  const cardW = c3 + PAD
 
-  // Workspace: folder, then its parent path, then the branch pill ending on the time column.
+  // Repo: folder, then its parent path, then the branch pill ending on the time column.
+  // The folder starts at PAD, on the card's titles.
   let pill = ''
   let pillX = c3
   if (where.branch) {
@@ -468,13 +483,13 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
       `<rect class="tile" x="${pillX}" y="${Y_ID - 11}" width="${pw}" height="18" rx="6"/>${BRANCH_ICON(pillX + 6, Y_ID - 8)}` +
       `<text class="s" x="${pillX + 20}" y="${Y_ID + 2}" font-family="${MONO}" font-size="11">${xml(branch)}</text>`
   }
-  const folder = fitText(where.folder || '—', 13, Math.max(40, pillX - 12 - 60))
-  const pathX = Math.round(textWidth(folder, 13) * 1.04 + 6)
+  const folder = fitText(where.folder || '—', 14, Math.max(40, pillX - PAD - 12 - 60))
+  const pathX = Math.round(PAD + textWidth(folder, 14) * 1.04 + 6)
   const pathW = pillX - 12 - pathX
   const path = where.path && pathW > 30 ? svgText(pathX, Y_ID, 11, 'm', xml(fitMiddle(where.path, 11, pathW))) : ''
 
   // Main thread. Both left lines stop at the same edge, clear of the cost column's figures.
-  const leftW = Math.max(0, c2 - Math.max(boldWidth('100%', SIZE_KEY), textWidth('spend 100%', SIZE)) - 16)
+  const leftW = Math.max(0, c2 - PAD - Math.max(boldWidth('100%', SIZE_KEY), textWidth('spend 100%', SIZE)) - 16)
   // The model in the row's grey, its effort in the lighter one; the effort goes first when room runs out.
   const name = m.model ? modelName(m.model) : '—'
   const effort = m.model && m.effort ? ` · ${m.effort}` : ''
@@ -487,7 +502,8 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
   const ctxTokens = m.ctxWindow
     ? `<tspan class="ml">${xml(fmtTokens(m.ctxTokens ?? 0))}</tspan><tspan class="mk"> / ${xml(fmtWindow(m.ctxWindow))}</tspan>`
     : ''
-  const fill = Math.round((c3 * Math.min(100, pct)) / 100)
+  const barW = c3 - PAD
+  const fill = Math.round((barW * Math.min(100, pct)) / 100)
 
   // Row 2, left: the cost, then the tokens, then sent and generated; a group
   // that does not fit is left out whole, the last first.
@@ -513,29 +529,38 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
   return svg(
     W,
     HEADER_H,
-    `${sectionTitle(Y_REPO, S.repo)}
-${svgText(0, Y_ID, 13, 'ml', xml(folder), BOLD)}${path}${pill}
-${sectionTitle(Y_TITLE, S.mainThread)}
-${svgText(0, Y_ROW1, SIZE, 's', model)}
+    `${svgText(PAD, Y_ID, 14, 'ml', xml(folder), BOLD)}${path}${pill}
+<path class="card" d="M0 ${CARD_TOP + CARD_R}a${CARD_R} ${CARD_R} 0 0 1 ${CARD_R} -${CARD_R}H${cardW - CARD_R}a${CARD_R} ${CARD_R} 0 0 1 ${CARD_R} ${CARD_R}V${HEADER_H}H0Z"/>
+${sectionTitle(PAD, Y_TITLE, S.mainThread)}
+${svgText(PAD, Y_ROW1, SIZE, 's', model)}
 ${svgText(c2, Y_ROW1, SIZE_KEY, pctClass, `${pct}%`, END + BOLD)}${ctxTokens ? svgText(c3, Y_ROW1, SIZE, 'ml', ctxTokens, END) : ''}
-<rect class="k" x="0" y="${BAR_Y}" width="${c3}" height="${BAR_H}" rx="${BAR_H / 2}"/><rect class="${pctClass}" x="0" y="${BAR_Y}" width="${fill}" height="${BAR_H}" rx="${BAR_H / 2}"/>
-${figures}
+<rect class="k" x="${PAD}" y="${BAR_Y}" width="${barW}" height="${BAR_H}" rx="${BAR_H / 2}"/><rect class="${pctClass}" x="${PAD}" y="${BAR_Y}" width="${fill}" height="${BAR_H}" rx="${BAR_H / 2}"/>
+<g transform="translate(${PAD},0)">${figures}</g>
 ${limits}`,
   )
 }
 
-// The subagents' sums, the header's third section: the title on its own line,
-// SECTION_GAP below the main thread; TITLE_GAP lower the column labels, and
-// the values under them, on the agent rows' columns; then the line that closes
-// the header. Left of the values, how many runs there are, then how many still
-// work and how many failed. Figures take the main thread's sizes: SIZE, and
-// SIZE_KEY for the cost.
+// The subagents' sums, the card's second section: the title SECTION_GAP below
+// the main thread's last row, with the column labels on its line while 24 px
+// stay between them, else LABELS_DROP lower; the values TITLE_GAP below the
+// labels, on the agent rows' columns; then the card's rounded bottom. Left of
+// the values, how many runs there are, then how many still work and how many
+// failed. Figures take the main thread's sizes: SIZE, and SIZE_KEY for the cost.
 const SUB_TITLE = Y_ROW2 + SECTION_GAP - HEADER_H
-const SUB_LAB = SUB_TITLE + TITLE_GAP
-const SUB_VAL = SUB_LAB + 20
-const SUBAGENTS_H = SUB_VAL + 30
+const LABELS_DROP = 19
+const labelsDrop = (W: number): number => {
+  const [c1] = metricEdges(W - ARROW_W - 24)
+  return PAD + titleWidth(S.subagents) + 24 <= c1 - textWidth(S.tokens, 11) ? 0 : LABELS_DROP
+}
+const cardBottom = (W: number): number => SUB_TITLE + labelsDrop(W) + TITLE_GAP + CARD_PAD_BOTTOM
+const subagentsHeight = (W: number): number => cardBottom(W) + CARD_GAP_BELOW
 const subagentsSvg = (W: number, t: ReturnType<typeof totals>, list: readonly AgentRun[]): string => {
   const [c1, c2, c3] = metricEdges(W - ARROW_W - 24)
+  const H = subagentsHeight(W)
+  const bottom = cardBottom(W)
+  const yLab = SUB_TITLE + labelsDrop(W)
+  const yVal = yLab + TITLE_GAP
+  const cardW = c3 + PAD
   const running = list.filter(a => a.status === 'running').length
   const failed = list.filter(a => a.status === 'failed').length
   const tokens = fmtTokens(t.tokens)
@@ -550,16 +575,16 @@ const subagentsSvg = (W: number, t: ReturnType<typeof totals>, list: readonly Ag
       running ? [labelled(String(running), S.isRunning, 'after')] : [],
       failed ? [failedFigure] : [],
     ].filter(g => g.length),
-    c1 - textWidth(tokens, SIZE) - 16,
-    SUB_VAL,
+    c1 - PAD - textWidth(tokens, SIZE) - 16,
+    yVal,
   )
   return svg(
     W,
-    SUBAGENTS_H,
-    `${sectionTitle(SUB_TITLE, S.subagents)}
-${svgText(c1, SUB_LAB, 11, 'mk', S.tokens, END)}${svgText(c2, SUB_LAB, 11, 'mk', S.cost, END)}${svgText(c3, SUB_LAB, 11, 'mk', S.time, END)}
-${counts}${svgText(c1, SUB_VAL, SIZE, 'ml', xml(tokens), END)}${svgText(c2, SUB_VAL, SIZE_KEY, 'mvC', xml(fmtCost(t.cost)), END + BOLD)}${svgText(c3, SUB_VAL, SIZE, 'ml', xml(fmtTime(t.time)), END)}
-<line class="ln" x1="0" y1="${SUBAGENTS_H - 0.5}" x2="${W}" y2="${SUBAGENTS_H - 0.5}"/>`,
+    H,
+    `<path class="card" d="M0 0H${cardW}V${bottom - CARD_R}a${CARD_R} ${CARD_R} 0 0 1 -${CARD_R} ${CARD_R}H${CARD_R}a${CARD_R} ${CARD_R} 0 0 1 -${CARD_R} -${CARD_R}Z"/>
+${sectionTitle(PAD, SUB_TITLE, S.subagents)}
+${svgText(c1, yLab, 11, 'mk', S.tokens, END)}${svgText(c2, yLab, 11, 'mk', S.cost, END)}${svgText(c3, yLab, 11, 'mk', S.time, END)}
+<g transform="translate(${PAD},0)">${counts}</g>${svgText(c1, yVal, SIZE, 'ml', xml(tokens), END)}${svgText(c2, yVal, SIZE_KEY, 'mvC', xml(fmtCost(t.cost)), END + BOLD)}${svgText(c3, yVal, SIZE, 'ml', xml(fmtTime(t.time)), END)}`,
   )
 }
 
@@ -1104,7 +1129,7 @@ export const register: Register = on => {
             width={W}
             height={HEADER_H}
           />
-          <Svg source={subagentsSvg(W, t, list)} alt={`${S.subagents}: ${summary}`} width={W} height={SUBAGENTS_H} />
+          <Svg source={subagentsSvg(W, t, list)} alt={`${S.subagents}: ${summary}`} width={W} height={subagentsHeight(W)} />
           {isEmpty && (
             // The empty state takes the same air as the sections and the labels' grey.
             <Box key="empty" marginTop={1}>
