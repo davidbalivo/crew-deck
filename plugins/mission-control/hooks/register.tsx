@@ -83,7 +83,9 @@ const fitText = (s: string, size: number, maxW: number): string => {
 
 // USD per million tokens: input, output, cache read, cache write (5-minute TTL).
 // The engine reports tokens, not money, so the panel's cost is an estimate.
-// List prices from platform.claude.com/docs/en/about-claude/pricing,
+// Three sources, first valid one wins: the official pricing page, fetched at
+// session start; the last valid fetch, kept in `$.store`; the built-in PRICES.
+// PRICES: list prices from platform.claude.com/docs/en/about-claude/pricing,
 // checked 2026-10-17. First match wins, so specific versions go first.
 type Price = [number, number, number, number]
 const PRICES: [RegExp, Price][] = [
@@ -103,6 +105,195 @@ const PRICES: [RegExp, Price][] = [
 const HAIKU_5_5_LONG: Price = [0.5, 2.5, 0.05, 0.625]
 const HAIKU_5_5_LIMIT = 100_000
 
+// --- prices from the official page. Its text goes through the parser and no
+// further: only numbers come out, never to the model, never into an SVG.
+
+const PRICE_URL = 'https://platform.claude.com/docs/en/about-claude/pricing.md'
+const PRICE_STORE_KEY = 'prices'
+// The page runs near 50 KB; anything far past that is not it.
+const PRICE_MAX_CHARS = 512_000
+// The page's table has far fewer rows; more is not it.
+const PRICE_MAX_ROWS = 200
+// Families the page must list for its table to count.
+const PRICE_FAMILIES = ['opus', 'sonnet', 'haiku'] as const
+// Models the page must list with their long-prompt tier, as PRICES knows them.
+const PRICE_TIERED = ['haiku-5-5'] as const
+// When PRICES was checked against the page (2026-10-17): a stored table
+// older than that loses to PRICES.
+const PRICES_CHECKED_AT = 1_792_195_200_000
+
+/** A prompt past `over` tokens bills at `price` instead (Haiku 5.5). */
+type LongPrice = { readonly over: number; readonly price: Price }
+/** One model's prices, keyed as `modelKey` names it: `opus-5-5`. */
+type PriceRow = { readonly key: string; readonly price: Price; readonly long?: LongPrice }
+type PriceTable = { readonly checkedAt: number; readonly rows: readonly PriceRow[] }
+
+// The table in use while the page or the store has given a valid one.
+let fetchedPrices: PriceTable | undefined
+
+const MODEL_ID = /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i
+const KEY = /^(fable|mythos|opus|sonnet|haiku)-\d{1,2}(-\d{1,2})?$/
+
+// `claude-opus-5-5-20261001` and `claude-opus-5-5[1m]` → `opus-5-5`; the
+// alias `claude-opus-4-0` → `opus-4`, as the page names it.
+const modelKey = (model: string): string | undefined => {
+  const [, family, major, minor] = MODEL_ID.exec(model) ?? []
+  if (!family || !major) return undefined
+  return `${family.toLowerCase()}-${major}${minor && minor !== '0' ? `-${minor}` : ''}`
+}
+
+const isList = (v: unknown): v is readonly unknown[] => Array.isArray(v)
+const isFigure = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0.001 && v <= 1000
+
+// Each figure in range, and in the order every Claude price keeps:
+// cache read < input < output, cache write ≥ input.
+const isPrice = (p: unknown): p is Price => {
+  if (!isList(p) || p.length !== 4) return false
+  const [input, output, read, write] = p
+  return isFigure(input) && isFigure(output) && isFigure(read) && isFigure(write) && read < input && input < output && write >= input
+}
+
+// The whole table holds, or none of it is used.
+const isValidTable = (rows: readonly PriceRow[]): boolean => {
+  const keys = rows.map(r => r.key)
+  return (
+    new Set(keys).size === keys.length &&
+    PRICE_FAMILIES.every(f => keys.some(k => k.startsWith(`${f}-`))) &&
+    PRICE_TIERED.every(k => rows.some(r => r.key === k && r.long)) &&
+    rows.every(
+      r =>
+        KEY.test(r.key) &&
+        isPrice(r.price) &&
+        (r.long === undefined ||
+          (Number.isInteger(r.long.over) && r.long.over > 0 && isPrice(r.long.price) && r.long.price.every((v, i) => v >= (r.price[i] ?? 0)))),
+    )
+  )
+}
+
+// `$12.50 / MTok`, a footnote mark allowed: the number, or undefined.
+const moneyOf = (cell: string): number | undefined => {
+  const m = /^\$(\d{1,4}(?:\.\d{1,4})?) \/ MTok$/.exec(cell.replace(/<sup>\d{1,2}<\/sup>/g, '').trim())
+  return m?.[1] === undefined ? undefined : Number(m[1])
+}
+
+type PageRow = { readonly key: string; readonly price: Price; readonly tier?: { readonly side: 'up to' | 'over'; readonly at: number } }
+
+// `Claude Haiku 5.5 (for prompts over 100,000 tokens)` → its key and tier.
+// Rows of other shapes are skipped.
+const modelRowOf = (cell: string): Omit<PageRow, 'price'> | undefined => {
+  const text = cell.replace(/<sup>\d{1,2}<\/sup>/g, '').trim()
+  const m = /^Claude (Fable|Mythos|Opus|Sonnet|Haiku) (\d{1,2})(?:\.(\d{1,2}))?(?![\d.])(.*)$/.exec(text)
+  const [, family, major, minor, rest = ''] = m ?? []
+  if (!family || !major) return undefined
+  const key = `${family.toLowerCase()}-${major}${minor ? `-${minor}` : ''}`
+  const t = /\(for prompts (up to|over) (\d{1,3}(?:,\d{3})*) tokens\)/.exec(rest)
+  const side = t?.[1]
+  const at = Number((t?.[2] ?? '').replace(/,/g, ''))
+  if (side === 'up to' || side === 'over') return { key, tier: { side, at } }
+  return { key }
+}
+
+// The "Model pricing" table of the page as rows, by its header's names, not
+// its column order. Undefined when the table is missing or a price unreadable.
+const parsePricePage = (md: string): PriceRow[] | undefined => {
+  const lines = md.split('\n')
+  const start = lines.findIndex(l => l.trim() === '## Model pricing')
+  if (start < 0) return undefined
+  const after = lines.slice(start + 1)
+  const end = after.findIndex(l => l.startsWith('## '))
+  const section = end < 0 ? after : after.slice(0, end)
+  const first = section.findIndex(l => l.trim().startsWith('|'))
+  if (first < 0) return undefined
+  const rest = section.slice(first)
+  const stop = rest.findIndex(l => !l.trim().startsWith('|'))
+  const table = stop < 0 ? rest : rest.slice(0, stop)
+  const cells = (line: string): string[] => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+
+  const [headLine, sepLine, ...body] = table
+  if (headLine === undefined || sepLine === undefined || !/^[\s|:-]+$/.test(sepLine)) return undefined
+  const head = cells(headLine)
+  const col = (re: RegExp): number => head.findIndex(h => re.test(h))
+  const cols = {
+    model: col(/^Model$/i),
+    input: col(/^Base input tokens$/i),
+    write: col(/^5m cache writes$/i),
+    read: col(/^Cache hits/i),
+    output: col(/^Output tokens$/i),
+  }
+  if (Object.values(cols).some(i => i < 0) || body.length > PRICE_MAX_ROWS) return undefined
+
+  const pageRows: PageRow[] = []
+  for (const line of body) {
+    const c = cells(line)
+    if (c.length !== head.length) return undefined
+    const model = modelRowOf(c[cols.model] ?? '')
+    if (!model) continue
+    const [input, output, read, write] = [cols.input, cols.output, cols.read, cols.write].map(i => moneyOf(c[i] ?? ''))
+    if (input === undefined || output === undefined || read === undefined || write === undefined) return undefined
+    pageRows.push({ ...model, price: [input, output, read, write] })
+  }
+
+  // A model in two tiers: the lower one is its price, the upper one its `long`.
+  const rows: PriceRow[] = []
+  for (const r of pageRows) {
+    if (!r.tier) {
+      rows.push({ key: r.key, price: r.price })
+      continue
+    }
+    if (r.tier.side === 'over') continue
+    const at = r.tier.at
+    const over = pageRows.find(o => o.key === r.key && o.tier?.side === 'over' && o.tier.at === at)
+    if (!over) return undefined
+    rows.push({ key: r.key, price: r.price, long: { over: at, price: over.price } })
+  }
+  // An upper tier with no lower one is a table it cannot read.
+  if (pageRows.some(o => o.tier?.side === 'over' && !rows.some(r => r.key === o.key && r.long))) return undefined
+  return rows
+}
+
+// The page's text, checked, as a table; undefined when anything is off.
+const tableOfPage = (text: string, checkedAt: number): PriceTable | undefined => {
+  if (text.length > PRICE_MAX_CHARS) return undefined
+  const rows = parsePricePage(text)
+  return rows && isValidTable(rows) ? { checkedAt, rows } : undefined
+}
+
+// What `$.store` gave back, checked again as the page's table is.
+const storedTable = (v: unknown): PriceTable | undefined => {
+  if (typeof v !== 'object' || v === null || !('checkedAt' in v) || !('rows' in v)) return undefined
+  const { checkedAt, rows } = v
+  if (typeof checkedAt !== 'number' || !Array.isArray(rows)) return undefined
+  const out: PriceRow[] = []
+  for (const r of rows) {
+    if (typeof r !== 'object' || r === null || !('key' in r) || !('price' in r)) return undefined
+    const { key, price } = r
+    if (typeof key !== 'string' || !isPrice(price)) return undefined
+    const long = 'long' in r ? r.long : undefined
+    if (long === undefined) {
+      out.push({ key, price })
+      continue
+    }
+    if (typeof long !== 'object' || long === null || !('over' in long) || !('price' in long)) return undefined
+    const { over, price: longPrice } = long
+    if (typeof over !== 'number' || !isPrice(longPrice)) return undefined
+    out.push({ key, price, long: { over, price: longPrice } })
+  }
+  return checkedAt >= PRICES_CHECKED_AT && isValidTable(out) ? { checkedAt, rows: out } : undefined
+}
+
+// The last valid fetch from the store, then the page itself. A store or a
+// fetch that fails, or does not check out, changes nothing. Never awaited by the panel.
+async function loadPrices($: EngineInterface): Promise<void> {
+  const stored = storedTable(await $.store.get(PRICE_STORE_KEY).catch(() => undefined))
+  if (stored) fetchedPrices = stored
+  const r = await $.http.fetch(PRICE_URL, { headers: { accept: 'text/markdown' } })
+  if (!r.ok || !(r.headers['content-type'] ?? '').startsWith('text/')) return
+  const table = tableOfPage(r.text, await $.clock.now())
+  if (!table) return
+  fetchedPrices = table
+  await $.store.set(PRICE_STORE_KEY, table)
+}
+
 type Usage = {
   input_tokens: number
   output_tokens: number
@@ -114,7 +305,11 @@ type Usage = {
 const inputOf = (u: Usage): number =>
   (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0)
 
+// The fetched table first; a model it does not list takes PRICES.
 const priceOf = (model: string, prompt = 0): Price => {
+  const key = modelKey(model)
+  const row = key === undefined ? undefined : fetchedPrices?.rows.find(r => r.key === key)
+  if (row) return row.long && prompt > row.long.over ? row.long.price : row.price
   const id = model.toLowerCase()
   if (/haiku-5-5/.test(id) && prompt > HAIKU_5_5_LIMIT) return HAIKU_5_5_LONG
   return PRICES.find(([re]) => re.test(id))?.[1] ?? [4, 20, 0.2, 5]
@@ -135,7 +330,7 @@ const costOf = (model: string, u: Usage): number => {
 const windowOf = (model: string): number => (/haiku/i.test(model) && !/haiku-5-5/i.test(model) ? 200_000 : 1_000_000)
 
 const modelName = (id: string): string => {
-  const m = /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
+  const m = MODEL_ID.exec(id)
   const [, family = '', major = '', minor] = m ?? []
   if (!family) return id.replace(/^claude-/, '').replace(/\[.*\]$/, '') || '—'
   return `${family.charAt(0).toUpperCase()}${family.slice(1).toLowerCase()} ${major}${minor ? '.' + minor : ''}`
@@ -951,6 +1146,8 @@ const keptButtons = new Map<string, { label: string; element: RenderElement }>()
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    // Prices load beside the rest; until they do, the built-in PRICES count.
+    void loadPrices($).catch(() => undefined)
     await refreshEnv($).catch(() => undefined)
     const usage = await $.session.usage()
     // The model before the first response; each request names it from then on.

@@ -27,7 +27,15 @@ Then run `/reload-plugins`.
 
 ## Cost is an estimate
 
-Claude Code reports tokens, not money. The panel multiplies them by the price table `PRICES` in `hooks/register.tsx`, copied from the [official pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on 2026-10-17. It does not price fast mode, 1-hour cache writes or US-only inference, because Claude Code does not say when they apply.
+Tokens from Claude Code × a price table. Price sources, first valid one wins:
+
+1. Official pricing page, fetched at session start: `https://platform.claude.com/docs/en/about-claude/pricing.md`.
+2. Last valid fetch, kept across sessions, if newer than the built-in table.
+3. Built-in table `PRICES` in `hooks/register.tsx`, copied from that page on 2026-10-17.
+
+A fetch with any doubtful value: discarded whole. No credentials and no user data in the request.
+
+Not priced: fast mode, 1-hour cache writes, US-only inference. No signal from Claude Code for them.
 
 ## Step tool
 
