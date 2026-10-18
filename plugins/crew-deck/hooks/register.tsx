@@ -907,6 +907,13 @@ const STOP_ANSWER = 'Stopped by the person from the Crew Deck panel before finis
 const isStopRequested = async ($: EngineInterface, agentId: string): Promise<boolean> =>
   (await read($, agents)).some(a => a.agentId === agentId && a.isStopRequested === true)
 
+// A run's stop Button is keyed STOP_KEY + the run's id.
+const STOP_KEY = 'stop-'
+
+// Marks a running run to stop; a run that already ended is left alone.
+const requestStop = ($: EngineInterface, id: string) =>
+  update($, agents, rows => rows.map(x => (x.id === id && x.status === 'running' ? { ...x, isStopRequested: true } : x)))
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -955,6 +962,16 @@ export const register: Register = on => {
   on('command.run', { command: 'crew-deck' }, async $ => {
     const isOpen = await togglePane($)
     return { text: isOpen ? S.opened : S.closed }
+  })
+
+  // A press on a run's stop, taken by its key: the pane redraws up to ten times
+  // a second while runs work, and the host keeps a Button's own handler only
+  // for the drawing that made it, so a click that lands across a redraw may not
+  // reach it. The key reaches this hook either way.
+  on('ui.press', { plugin: 'crew-deck' }, async ($, e, next) => {
+    if (!e.element.startsWith(STOP_KEY)) return next(e)
+    await requestStop($, e.element.slice(STOP_KEY.length))
+    return { element: e.element }
   })
 
   // A stopped run's tool calls are refused while its last model request ends.
@@ -1167,9 +1184,9 @@ export const register: Register = on => {
       // One press of the stop stops the run. A run already stopping shows a
       // dim square that takes no press.
       const stopSlot = (a: AgentRun) => {
-        if (a.isStopRequested) return <Text key={`stop-${a.id}`} dimColor>■</Text>
-        const stop = () => update($, agents, rows => rows.map(x => (x.id === a.id ? { ...x, isStopRequested: true } : x)))
-        return <Button key={`stop-${a.id}`} label="■" plain dimColor onPress={() => void stop()} />
+        if (a.isStopRequested) return <Text key={`${STOP_KEY}${a.id}`} dimColor>■</Text>
+        // The `ui.press` hook takes the press first; this handler is the fallback.
+        return <Button key={`${STOP_KEY}${a.id}`} label="■" plain dimColor onPress={() => void requestStop($, a.id)} />
       }
       const agentRow = (r: TreeRow) => {
         const isFold = isFolded(r.a, p)

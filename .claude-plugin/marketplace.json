@@ -7,7 +7,7 @@
       "name": "crew-deck",
       "source": "./plugins/crew-deck",
       "description": "Mod: a header with the workspace, the main thread (model, context, cost, tokens, limits) and the subagents' totals, and a live panel of every subagent, with cost, tokens, context and steps.",
-      "version": "0.6.2",
+      "version": "0.6.3",
       "category": "mod"
     }
   ]
