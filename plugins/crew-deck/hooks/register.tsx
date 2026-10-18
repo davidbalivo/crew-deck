@@ -233,7 +233,8 @@ const familiesOf = (list: AgentRun[]): Family[] => {
 // grey text in three steps, one hue per state, every color with a dark variant.
 // Text passes 4.5:1 and marks 3:1 on #FFFFFF / #1F1F1E. `.cR` running, `.cF`
 // failed, `.cG` `.cW` `.cO` `.cF` the header's context by level (green, amber,
-// orange, red), `.bf` an agent's body (`--b`).
+// orange, red), `.bf` an agent's body (`--b`), `.ln` a light line, `.lnS` the
+// dark one that closes the header.
 // Metrics: `.mvC` cost in a muted teal, the only colored figure on a row; time,
 // context and tokens in the grey `.ml`; the words `ctx`, `in`, `out` and the
 // agent type lighter still, `.mk`
@@ -250,10 +251,10 @@ const BODY_COLORS: [string, string][] = [
 ]
 const bodyCss = (i: 0 | 1): string => BODY_COLORS.map((c, n) => `.b${n}{--b:${c[i]}}`).join('')
 const PANE_CSS = `<style>
-.t{fill:#1F1F1E}.s{fill:#55544F}.m{fill:#73726D}.k{fill:#E6E5E1}.ln{stroke:#ECEBE7}.tile{fill:#F4F3F0}.tr{stroke:#D3D2CD;stroke-width:1.2;fill:none;stroke-linecap:round}
+.t{fill:#1F1F1E}.s{fill:#55544F}.m{fill:#73726D}.k{fill:#E6E5E1}.ln{stroke:#ECEBE7}.lnS{stroke:#1F1F1E}.tile{fill:#F4F3F0}.tr{stroke:#D3D2CD;stroke-width:1.2;fill:none;stroke-linecap:round}
 .mvC{fill:#2B6A62}.ml{fill:#73726D}.mk{fill:#A3A29C}
 .cR{fill:#B5532F}.cF{fill:#C42B2B}.cW{fill:#9A5B00}.cG{fill:#2E7D52}.cO{fill:#B34E00}.sF{stroke:#C42B2B}.sM{stroke:#73726D}.bf{fill:var(--b)}${bodyCss(0)}
-@media (prefers-color-scheme: dark){.t{fill:#ECEBE8}.s{fill:#BDBCB6}.m{fill:#97968F}.k{fill:#3A3A37}.ln{stroke:#2E2E2C}.tile{fill:#262625}.tr{stroke:#4A4A47}
+@media (prefers-color-scheme: dark){.t{fill:#ECEBE8}.s{fill:#BDBCB6}.m{fill:#97968F}.k{fill:#3A3A37}.ln{stroke:#2E2E2C}.lnS{stroke:#ECEBE8}.tile{fill:#262625}.tr{stroke:#4A4A47}
 .mvC{fill:#8FC8BF}.ml{fill:#97968F}.mk{fill:#6C6B66}
 .cR{fill:#E08A6B}.cF{fill:#F2726B}.cW{fill:#E8A33D}.cG{fill:#5DBE8A}.cO{fill:#F08A4B}.sF{stroke:#F2726B}.sM{stroke:#97968F}${bodyCss(1)}}
 .live{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.35}}
@@ -397,8 +398,11 @@ const BOLD = ' font-weight="600"'
 // Bold runs ~6% wider than the estimate.
 const boldWidth = (s: string, size: number): number => textWidth(s, size) * HEADER_BOLD
 
-// A section's title: bold, in the lighter `ctx` grey.
-const sectionTitle = (y: number, title: string): string => svgText(0, y, 11, 'mk', xml(title), BOLD)
+// A section's title: bold, in the lighter `ctx` grey, over a light line
+// TITLE_LINE px below its baseline.
+const TITLE_LINE = 8
+const sectionTitle = (W: number, y: number, title: string): string =>
+  `${svgText(0, y, 11, 'mk', xml(title), BOLD)}<line class="ln" x1="0" y1="${y + TITLE_LINE - 0.5}" x2="${W}" y2="${y + TITLE_LINE - 0.5}"/>`
 
 // One figure of a row: its width and its markup, drawn at a given x.
 type Figure = { w: number; body: string }
@@ -513,9 +517,9 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
   return svg(
     W,
     HEADER_H,
-    `${sectionTitle(Y_REPO, S.repo)}
+    `${sectionTitle(W, Y_REPO, S.repo)}
 ${svgText(0, Y_ID, 13, 'ml', xml(folder), BOLD)}${path}${pill}
-${sectionTitle(Y_TITLE, S.mainThread)}
+${sectionTitle(W, Y_TITLE, S.mainThread)}
 ${svgText(0, Y_ROW1, SIZE, 's', model)}
 ${svgText(c2, Y_ROW1, SIZE_KEY, pctClass, `${pct}%`, END + BOLD)}${ctxTokens ? svgText(c3, Y_ROW1, SIZE, 'ml', ctxTokens, END) : ''}
 <rect class="k" x="0" y="${BAR_Y}" width="${c3}" height="${BAR_H}" rx="${BAR_H / 2}"/><rect class="${pctClass}" x="0" y="${BAR_Y}" width="${fill}" height="${BAR_H}" rx="${BAR_H / 2}"/>
@@ -526,7 +530,7 @@ ${limits}`,
 
 // The subagents' sums, the header's third section: the title on its own line,
 // SECTION_GAP below the main thread; TITLE_GAP lower the column labels, and
-// the values under them, on the agent rows' columns; then the line that closes
+// the values under them, on the agent rows' columns; then the dark line that closes
 // the header. Left of the values, how many runs there are, then how many still
 // work and how many failed. Figures take the main thread's sizes: SIZE, and
 // SIZE_KEY for the cost.
@@ -556,10 +560,10 @@ const subagentsSvg = (W: number, t: ReturnType<typeof totals>, list: readonly Ag
   return svg(
     W,
     SUBAGENTS_H,
-    `${sectionTitle(SUB_TITLE, S.subagents)}
+    `${sectionTitle(W, SUB_TITLE, S.subagents)}
 ${svgText(c1, SUB_LAB, 11, 'mk', S.tokens, END)}${svgText(c2, SUB_LAB, 11, 'mk', S.cost, END)}${svgText(c3, SUB_LAB, 11, 'mk', S.time, END)}
 ${counts}${svgText(c1, SUB_VAL, SIZE, 'ml', xml(tokens), END)}${svgText(c2, SUB_VAL, SIZE_KEY, 'mvC', xml(fmtCost(t.cost)), END + BOLD)}${svgText(c3, SUB_VAL, SIZE, 'ml', xml(fmtTime(t.time)), END)}
-<line class="ln" x1="0" y1="${SUBAGENTS_H - 0.5}" x2="${W}" y2="${SUBAGENTS_H - 0.5}"/>`,
+<line class="lnS" x1="0" y1="${SUBAGENTS_H - 0.5}" x2="${W}" y2="${SUBAGENTS_H - 0.5}"/>`,
   )
 }
 
