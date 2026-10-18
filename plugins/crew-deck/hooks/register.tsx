@@ -440,14 +440,18 @@ const spaced = (groups: Figure[][], maxW: number, y: number, size = SIZE): strin
 // title. Below it a soft card holds the usage in two sections, Main thread and
 // Subagents, each under its title; the card starts in this SVG and ends in the
 // subagents' one, stacked right under it. Inside the card the left side is
-// inset by PAD; the right side keeps the agent rows' columns.
+// inset by PAD; the right side keeps the agent rows' columns. Right of the
+// time column the rows keep room for their status mark and fold arrow; the card
+// splits that room, less PAD, into equal margins outside it on both sides.
 // Main thread: two rows mirrored around the context bar. On the left the model
 // over the cost and tokens; on the right two columns that share the agent rows'
 // cost and time edges: the context percentage over one limit, the context
 // tokens over the other. Everything ends on the time column.
 const PAD = 12
+// A function, not a constant: ARROW_W is declared further down.
+const cardInset = (): number => (ARROW_W + 24 - PAD) / 2
 const CARD_R = 8
-const TITLE_GAP = 19
+const TITLE_GAP = 25
 const SECTION_GAP = 44
 const Y_ID = 22
 const CARD_TOP = 40
@@ -467,10 +471,13 @@ const SIZE_KEY = 13
 
 const headerSvg = (W: number, where: Env, m: Main): string => {
   const [, c2, c3] = metricEdges(W - ARROW_W - 24)
-  const cardW = c3 + PAD
+  const cx = cardInset()
+  // The card's right edge, cx from the panel's, as on the left.
+  const cardW = W - cx
+  const x0 = cx + PAD
 
   // Repo: folder, then its parent path, then the branch pill ending on the time column.
-  // The folder starts at PAD, on the card's titles.
+  // The folder starts at x0, on the card's titles.
   let pill = ''
   let pillX = c3
   if (where.branch) {
@@ -483,13 +490,13 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
       `<rect class="tile" x="${pillX}" y="${Y_ID - 11}" width="${pw}" height="18" rx="6"/>${BRANCH_ICON(pillX + 6, Y_ID - 8)}` +
       `<text class="s" x="${pillX + 20}" y="${Y_ID + 2}" font-family="${MONO}" font-size="11">${xml(branch)}</text>`
   }
-  const folder = fitText(where.folder || '—', 14, Math.max(40, pillX - PAD - 12 - 60))
-  const pathX = Math.round(PAD + textWidth(folder, 14) * 1.04 + 6)
+  const folder = fitText(where.folder || '—', 14, Math.max(40, pillX - x0 - 12 - 60))
+  const pathX = Math.round(x0 + textWidth(folder, 14) * 1.04 + 6)
   const pathW = pillX - 12 - pathX
   const path = where.path && pathW > 30 ? svgText(pathX, Y_ID, 11, 'm', xml(fitMiddle(where.path, 11, pathW))) : ''
 
   // Main thread. Both left lines stop at the same edge, clear of the cost column's figures.
-  const leftW = Math.max(0, c2 - PAD - Math.max(boldWidth('100%', SIZE_KEY), textWidth('spend 100%', SIZE)) - 16)
+  const leftW = Math.max(0, c2 - x0 - Math.max(boldWidth('100%', SIZE_KEY), textWidth('spend 100%', SIZE)) - 16)
   // The model in the row's grey, its effort in the lighter one; the effort goes first when room runs out.
   const name = m.model ? modelName(m.model) : '—'
   const effort = m.model && m.effort ? ` · ${m.effort}` : ''
@@ -502,7 +509,7 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
   const ctxTokens = m.ctxWindow
     ? `<tspan class="ml">${xml(fmtTokens(m.ctxTokens ?? 0))}</tspan><tspan class="mk"> / ${xml(fmtWindow(m.ctxWindow))}</tspan>`
     : ''
-  const barW = c3 - PAD
+  const barW = c3 - x0
   const fill = Math.round((barW * Math.min(100, pct)) / 100)
 
   // Row 2, left: the cost, then the tokens, then sent and generated; a group
@@ -529,13 +536,13 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
   return svg(
     W,
     HEADER_H,
-    `${svgText(PAD, Y_ID, 14, 'ml', xml(folder), BOLD)}${path}${pill}
-<path class="card" d="M0 ${CARD_TOP + CARD_R}a${CARD_R} ${CARD_R} 0 0 1 ${CARD_R} -${CARD_R}H${cardW - CARD_R}a${CARD_R} ${CARD_R} 0 0 1 ${CARD_R} ${CARD_R}V${HEADER_H}H0Z"/>
-${sectionTitle(PAD, Y_TITLE, S.mainThread)}
-${svgText(PAD, Y_ROW1, SIZE, 's', model)}
+    `${svgText(x0, Y_ID, 14, 'ml', xml(folder), BOLD)}${path}${pill}
+<path class="card" d="M${cx} ${CARD_TOP + CARD_R}a${CARD_R} ${CARD_R} 0 0 1 ${CARD_R} -${CARD_R}H${cardW - CARD_R}a${CARD_R} ${CARD_R} 0 0 1 ${CARD_R} ${CARD_R}V${HEADER_H}H${cx}Z"/>
+${sectionTitle(x0, Y_TITLE, S.mainThread)}
+${svgText(x0, Y_ROW1, SIZE, 's', model)}
 ${svgText(c2, Y_ROW1, SIZE_KEY, pctClass, `${pct}%`, END + BOLD)}${ctxTokens ? svgText(c3, Y_ROW1, SIZE, 'ml', ctxTokens, END) : ''}
-<rect class="k" x="${PAD}" y="${BAR_Y}" width="${barW}" height="${BAR_H}" rx="${BAR_H / 2}"/><rect class="${pctClass}" x="${PAD}" y="${BAR_Y}" width="${fill}" height="${BAR_H}" rx="${BAR_H / 2}"/>
-<g transform="translate(${PAD},0)">${figures}</g>
+<rect class="k" x="${x0}" y="${BAR_Y}" width="${barW}" height="${BAR_H}" rx="${BAR_H / 2}"/><rect class="${pctClass}" x="${x0}" y="${BAR_Y}" width="${fill}" height="${BAR_H}" rx="${BAR_H / 2}"/>
+<g transform="translate(${x0},0)">${figures}</g>
 ${limits}`,
   )
 }
@@ -550,7 +557,7 @@ const SUB_TITLE = Y_ROW2 + SECTION_GAP - HEADER_H
 const LABELS_DROP = 19
 const labelsDrop = (W: number): number => {
   const [c1] = metricEdges(W - ARROW_W - 24)
-  return PAD + titleWidth(S.subagents) + 24 <= c1 - textWidth(S.tokens, 11) ? 0 : LABELS_DROP
+  return cardInset() + PAD + titleWidth(S.subagents) + 24 <= c1 - textWidth(S.tokens, 11) ? 0 : LABELS_DROP
 }
 const cardBottom = (W: number): number => SUB_TITLE + labelsDrop(W) + TITLE_GAP + CARD_PAD_BOTTOM
 const subagentsHeight = (W: number): number => cardBottom(W) + CARD_GAP_BELOW
@@ -560,7 +567,10 @@ const subagentsSvg = (W: number, t: ReturnType<typeof totals>, list: readonly Ag
   const bottom = cardBottom(W)
   const yLab = SUB_TITLE + labelsDrop(W)
   const yVal = yLab + TITLE_GAP
-  const cardW = c3 + PAD
+  const cx = cardInset()
+  // The card's right edge, cx from the panel's, as on the left.
+  const cardW = W - cx
+  const x0 = cx + PAD
   const running = list.filter(a => a.status === 'running').length
   const failed = list.filter(a => a.status === 'failed').length
   const tokens = fmtTokens(t.tokens)
@@ -575,16 +585,16 @@ const subagentsSvg = (W: number, t: ReturnType<typeof totals>, list: readonly Ag
       running ? [labelled(String(running), S.isRunning, 'after')] : [],
       failed ? [failedFigure] : [],
     ].filter(g => g.length),
-    c1 - PAD - textWidth(tokens, SIZE) - 16,
+    c1 - x0 - textWidth(tokens, SIZE) - 16,
     yVal,
   )
   return svg(
     W,
     H,
-    `<path class="card" d="M0 0H${cardW}V${bottom - CARD_R}a${CARD_R} ${CARD_R} 0 0 1 -${CARD_R} ${CARD_R}H${CARD_R}a${CARD_R} ${CARD_R} 0 0 1 -${CARD_R} -${CARD_R}Z"/>
-${sectionTitle(PAD, SUB_TITLE, S.subagents)}
+    `<path class="card" d="M${cx} 0H${cardW}V${bottom - CARD_R}a${CARD_R} ${CARD_R} 0 0 1 -${CARD_R} ${CARD_R}H${cx + CARD_R}a${CARD_R} ${CARD_R} 0 0 1 -${CARD_R} -${CARD_R}Z"/>
+${sectionTitle(x0, SUB_TITLE, S.subagents)}
 ${svgText(c1, yLab, 11, 'mk', S.tokens, END)}${svgText(c2, yLab, 11, 'mk', S.cost, END)}${svgText(c3, yLab, 11, 'mk', S.time, END)}
-<g transform="translate(${PAD},0)">${counts}</g>${svgText(c1, yVal, SIZE, 'ml', xml(tokens), END)}${svgText(c2, yVal, SIZE_KEY, 'mvC', xml(fmtCost(t.cost)), END + BOLD)}${svgText(c3, yVal, SIZE, 'ml', xml(fmtTime(t.time)), END)}`,
+<g transform="translate(${x0},0)">${counts}</g>${svgText(c1, yVal, SIZE, 'ml', xml(tokens), END)}${svgText(c2, yVal, SIZE_KEY, 'mvC', xml(fmtCost(t.cost)), END + BOLD)}${svgText(c3, yVal, SIZE, 'ml', xml(fmtTime(t.time)), END)}`,
   )
 }
 
