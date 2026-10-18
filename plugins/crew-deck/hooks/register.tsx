@@ -514,7 +514,7 @@ const headerSvg = (W: number, where: Env, m: Main): string => {
     W,
     HEADER_H,
     `${sectionTitle(Y_REPO, S.repo)}
-${svgText(0, Y_ID, 13, 't', xml(folder), BOLD)}${path}${pill}
+${svgText(0, Y_ID, 13, 'ml', xml(folder), BOLD)}${path}${pill}
 ${sectionTitle(Y_TITLE, S.mainThread)}
 ${svgText(0, Y_ROW1, SIZE, 's', model)}
 ${svgText(c2, Y_ROW1, SIZE_KEY, pctClass, `${pct}%`, END + BOLD)}${ctxTokens ? svgText(c3, Y_ROW1, SIZE, 'ml', ctxTokens, END) : ''}
