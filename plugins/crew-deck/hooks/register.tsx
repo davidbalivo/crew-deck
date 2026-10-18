@@ -337,16 +337,16 @@ const crab = (x: number, y: number, costume: Costume, isWalking: boolean, scale:
   return `<g transform="translate(${x},${y}) scale(${scale})" shape-rendering="crispEdges"><g class="c-${costume}${isWalking ? ' run' : ''}">${body}${group('la')}${group('lb')}</g></g>`
 }
 
-// A run still working shows its stop button in the slot, a finished one its
-// fold arrow; the others draw their mark there: failed a red cross, stopped a
-// grey square.
-const statusMark = (x: number, y: number, status: 'failed' | 'stopped'): string =>
-  status === 'failed'
-    ? `<path class="sF" d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke-width="1.8" stroke-linecap="round"/>`
-    : `<rect class="m" x="${x - 4}" y="${y - 4}" width="8" height="8" rx="1.5"/>`
+// A run still working shows its stop button in the slot, a finished or
+// stopped one its fold arrow; a failed one draws a red cross there.
+const failedMark = (x: number, y: number): string =>
+  `<path class="sF" d="M${x - 4} ${y - 4}l8 8M${x + 4} ${y - 4}l-8 8" stroke-width="1.8" stroke-linecap="round"/>`
+
+// Runs that fold to one line: those that ended well, and those stopped from the panel.
+const isFoldable = (a: AgentRun): boolean => a.status === 'done' || a.status === 'stopped'
 
 // Runs whose slot holds a Button beside the drawing: the stop, or the fold arrow.
-const hasSlotButton = (a: AgentRun): boolean => a.status === 'running' || a.status === 'done'
+const hasSlotButton = (a: AgentRun): boolean => a.status === 'running' || isFoldable(a)
 
 // What a run says it is, for a screen reader.
 const stateOf = (a: AgentRun): string =>
@@ -623,9 +623,10 @@ const progressOf = (a: AgentRun): number | null => {
 
 const ctxOf = (a: AgentRun): number => (a.contextMax ? Math.min(100, Math.round((a.contextTokens / a.contextMax) * 100)) : 0)
 
-// Rows are taller and airier. A run that ended well folds to one line
-// on its own; its arrow unfolds it. Failed and running runs always show in full.
-const isFolded = (a: AgentRun, p: Panel): boolean => a.status === 'done' && !(p.expanded ?? []).includes(a.id)
+// Rows are taller and airier. A run that ended well or was stopped folds to
+// one line on its own; its arrow unfolds it. Failed and running runs always
+// show in full.
+const isFolded = (a: AgentRun, p: Panel): boolean => isFoldable(a) && !(p.expanded ?? []).includes(a.id)
 
 // Height, gap between text lines, crab scale and where the text starts. Text
 // blocks and the crab sit centred in the row.
@@ -737,17 +738,20 @@ const agentSvg = (W: number, row: TreeRow, at: number, bodyIdx: number, isFold =
   const time = fmtTime(elapsed(a, at))
   const crabSvg = `<g class="b${bodyIdx}">${crab(ind, crabY, costumeOf(a.type), a.status === 'running', sc)}</g>`
   const groupEnd = row.isGroupEnd ? `<line class="ln" x1="0" y1="${H - 0.5}" x2="${W - ARROW_W}" y2="${H - 0.5}"/>` : ''
-  const mark = a.status === 'failed' || a.status === 'stopped' ? statusMark(W - ARROW_W / 2, Math.round(H / 2), a.status) : ''
+  const mark = a.status === 'failed' ? failedMark(W - ARROW_W / 2, Math.round(H / 2)) : ''
 
   if (isFold) {
     const [y] = baselines(H, 1, 0)
     const size = isSub ? 11 : 12
-    const titleW = Math.max(0, c2 - METRIC_COLS[1] - x0 - 12)
+    // A stopped run keeps saying so after its title, in grey.
+    const stopped = a.status === 'stopped' ? ` · ${S.isStopped}` : ''
+    const titleW = Math.max(0, c2 - METRIC_COLS[1] - x0 - 12 - textWidth(stopped, 11))
+    const title = xml(fitText(a.description || a.type, size, titleW)) + (stopped ? `<tspan class="m" font-size="11">${xml(stopped)}</tspan>` : '')
     return svg(
       svgW,
       H,
       `${lines.join('')}${crabSvg}
-${text(x0, y ?? 0, size, 's', xml(fitText(a.description || a.type, size, titleW)), ' font-weight="500"')}
+${text(x0, y ?? 0, size, 's', title, ' font-weight="500"')}
 ${text(c2, y ?? 0, 11, 'mvC', xml(cost), `${end} font-weight="600"`)}${cell(c3, y ?? 0, 11, 'ml', xml(time))}
 ${mark}${groupEnd}`,
     )
@@ -1193,9 +1197,9 @@ export const register: Register = on => {
         const isFold = isFolded(r.a, p)
         const art = <Svg source={agentSvg(W, r, at, bodyIndexOf(list, r.a), isFold, isArmed(r.a))} alt={altOf(r, stateOf(r.a))} width={hasSlotButton(r.a) ? W - ARROW_W : W} height={rowHeight(r, isFold)} />
         return (
-          <Box key={r.a.id} flexDirection="row" alignItems="center" hover={r.a.status === 'done' ? { backgroundColor: ROW_HOVER } : undefined}>
+          <Box key={r.a.id} flexDirection="row" alignItems="center" hover={isFoldable(r.a) ? { backgroundColor: ROW_HOVER } : undefined}>
             {art}
-            {r.a.status === 'done' && (
+            {isFoldable(r.a) && (
               <Button key={`fold-${r.a.id}`} label={isFold ? '▸' : '▾'} plain dimColor onPress={() => void toggleRun(r.a.id)} />
             )}
             {r.a.status === 'running' && stopSlot(r.a)}
